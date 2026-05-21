@@ -1,0 +1,293 @@
+{
+  "info": {
+    "name": "SmartCarRent Authentication & Permissions",
+    "description": "Test authentication, permissions, and admin routes",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000/api",
+      "type": "string"
+    },
+    {
+      "key": "accessToken",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Auth - Client",
+      "item": [
+        {
+          "name": "1. Get CSRF Token",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/../"
+          }
+        },
+        {
+          "name": "2. Client Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test-client@example.com\",\n  \"password\": \"Client@2026!\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "3. Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/auth/me"
+          }
+        },
+        {
+          "name": "4. Get Dashboard",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/auth/dashboard"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Auth - Admin",
+      "item": [
+        {
+          "name": "1. Admin Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"test-admin@example.com\",\n  \"password\": \"Admin@2026!\"\n}"
+            },
+            "url": "{{baseUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "2. Get Current Admin",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/auth/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Permissions - Client vs Admin",
+      "item": [
+        {
+          "name": "Client - Can Access Voitures",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/voitures"
+          }
+        },
+        {
+          "name": "Client - Cannot Access Users (403)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/users"
+          }
+        },
+        {
+          "name": "Admin - Can Access Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/users"
+          }
+        },
+        {
+          "name": "Admin - Can Access Admins",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/admins"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Admin Routes",
+      "item": [
+        {
+          "name": "List Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/users"
+          }
+        },
+        {
+          "name": "List Marques",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/marques"
+          }
+        },
+        {
+          "name": "List Predictions",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/predictions"
+          }
+        },
+        {
+          "name": "List Calendriers (Admin)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/calendriers"
+          }
+        },
+        {
+          "name": "Validate Payment (Admin Only)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"validated\"\n}"
+            },
+            "url": "{{baseUrl}}/paiements/1/validate"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Client Routes",
+      "item": [
+        {
+          "name": "List Voitures",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/voitures"
+          }
+        },
+        {
+          "name": "Get Vehicle Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/voitures/1"
+          }
+        },
+        {
+          "name": "List My Reservations",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/reservations"
+          }
+        },
+        {
+          "name": "Create Reservation",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"voiture_id\": 1,\n  \"date_debut\": \"2026-05-01\",\n  \"date_fin\": \"2026-05-05\"\n}"
+            },
+            "url": "{{baseUrl}}/reservations"
+          }
+        },
+        {
+          "name": "List Payments",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-Requested-With", "value": "XMLHttpRequest" },
+              { "key": "Accept", "value": "application/json" }
+            ],
+            "url": "{{baseUrl}}/paiements"
+          }
+        }
+      ]
+    }
+  ]
+}

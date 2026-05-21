@@ -1,0 +1,120 @@
+{
+  "info": {
+    "name": "SmartCarRent API",
+    "_postman_id": "8e0bf5f3-5e0c-4c62-a0b8-2cf7461f9f20",
+    "description": "Collection for SmartCarRent Laravel API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8000/api"
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Clients",
+      "item": [
+        { "name": "List Clients", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/clients" } },
+        { "name": "Create Client", "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"user_id\": 1,\n  \"permis_conduire\": \"PERMIS-001\",\n  \"telephone\": \"0600000001\",\n  \"adresse\": \"Casablanca\"\n}"}, "url": "{{baseUrl}}/clients" } },
+        { "name": "Show Client", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/clients/1" } },
+        { "name": "Update Client", "request": { "method": "PUT", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"user_id\": 1,\n  \"permis_conduire\": \"PERMIS-002\",\n  \"telephone\": \"0600000002\",\n  \"adresse\": \"Rabat\"\n}"}, "url": "{{baseUrl}}/clients/1" } },
+        { "name": "Delete Client", "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/clients/1" } }
+      ]
+    },
+    {
+      "name": "Admins",
+      "item": [
+        { "name": "List Admins", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/admins" } },
+        { "name": "Create Admin", "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"user_id\": 1,\n  \"telephone\": \"0700000001\"\n}"}, "url": "{{baseUrl}}/admins" } },
+        { "name": "Show Admin", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/admins/1" } },
+        { "name": "Update Admin", "request": { "method": "PUT", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"user_id\": 1,\n  \"telephone\": \"0700000002\"\n}"}, "url": "{{baseUrl}}/admins/1" } },
+        { "name": "Delete Admin", "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/admins/1" } }
+      ]
+    },
+    {
+      "name": "Marques",
+      "item": [
+        { "name": "List Marques", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/marques" } },
+        { "name": "Create Marque", "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"nom\": \"Toyota\",\n  \"pays\": \"Japon\"\n}"}, "url": "{{baseUrl}}/marques" } },
+        { "name": "Show Marque", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/marques/1" } },
+        { "name": "Update Marque", "request": { "method": "PUT", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"nom\": \"Toyota Updated\",\n  \"pays\": \"Japon\"\n}"}, "url": "{{baseUrl}}/marques/1" } },
+        { "name": "Delete Marque", "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/marques/1" } }
+      ]
+    },
+    {
+      "name": "Voitures",
+      "item": [
+        { "name": "List Voitures", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/voitures" } },
+        { "name": "Create Voiture", "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"marque_id\": 1,\n  \"immatriculation\": \"1234-AB-56\",\n  \"modele\": \"Corolla\",\n  \"annee\": 2024,\n  \"prix_par_jour\": 350,\n  \"statut\": \"disponible\"\n}"}, "url": "{{baseUrl}}/voitures" } },
+        { "name": "Show Voiture", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/voitures/1" } },
+        { "name": "Update Voiture", "request": { "method": "PUT", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"marque_id\": 1,\n  \"immatriculation\": \"1234-AB-57\",\n  \"modele\": \"Corolla Cross\",\n  \"annee\": 2025,\n  \"prix_par_jour\": 400,\n  \"statut\": \"reservee\"\n}"}, "url": "{{baseUrl}}/voitures/1" } },
+        { "name": "Delete Voiture", "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/voitures/1" } }
+      ]
+    },
+    {
+      "name": "Reservations",
+      "item": [
+        { "name": "List Reservations", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/reservations" } },
+        { "name": "Create Reservation", "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"client_id\": 1,\n  \"voiture_id\": 1,\n  \"date_debut\": \"2026-04-10\",\n  \"date_fin\": \"2026-04-12\",\n  \"statut\": \"en_attente\"\n}"}, "url": "{{baseUrl}}/reservations" } },
+        { "name": "Show Reservation", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/reservations/1" } },
+        { "name": "Update Reservation", "request": { "method": "PUT", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"client_id\": 1,\n  \"voiture_id\": 1,\n  \"date_debut\": \"2026-04-11\",\n  \"date_fin\": \"2026-04-13\",\n  \"statut\": \"confirmee\"\n}"}, "url": "{{baseUrl}}/reservations/1" } },
+        { "name": "Delete Reservation", "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/reservations/1" } }
+      ]
+    },
+    {
+      "name": "Paiements",
+      "item": [
+        { "name": "List Paiements", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/paiements" } },
+        { "name": "Create Paiement", "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"reservation_id\": 1,\n  \"montant\": 500,\n  \"date_paiement\": \"2026-04-10\",\n  \"mode_paiement\": \"carte\"\n}"}, "url": "{{baseUrl}}/paiements" } },
+        { "name": "Show Paiement", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/paiements/1" } },
+        { "name": "Update Paiement", "request": { "method": "PUT", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"reservation_id\": 1,\n  \"montant\": 550,\n  \"date_paiement\": \"2026-04-11\",\n  \"mode_paiement\": \"virement\"\n}"}, "url": "{{baseUrl}}/paiements/1" } },
+        { "name": "Delete Paiement", "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/paiements/1" } }
+      ]
+    },
+    {
+      "name": "Calendriers",
+      "item": [
+        { "name": "List Calendriers", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/calendriers" } },
+        { "name": "Create Calendrier", "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"voiture_id\": 1,\n  \"date_debut\": \"2026-04-10\",\n  \"date_fin\": \"2026-04-12\",\n  \"disponible\": false\n}"}, "url": "{{baseUrl}}/calendriers" } },
+        { "name": "Show Calendrier", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/calendriers/1" } },
+        { "name": "Update Calendrier", "request": { "method": "PUT", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"voiture_id\": 1,\n  \"date_debut\": \"2026-04-11\",\n  \"date_fin\": \"2026-04-13\",\n  \"disponible\": true\n}"}, "url": "{{baseUrl}}/calendriers/1" } },
+        { "name": "Delete Calendrier", "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/calendriers/1" } }
+      ]
+    },
+    {
+      "name": "Predictions",
+      "item": [
+        { "name": "List Predictions", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/predictions" } },
+        { "name": "Create Prediction", "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"client_id\": 1,\n  \"type\": \"retard\",\n  \"probabilite\": 0.75\n}"}, "url": "{{baseUrl}}/predictions" } },
+        { "name": "Show Prediction", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/predictions/1" } },
+        { "name": "Update Prediction", "request": { "method": "PUT", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"client_id\": 1,\n  \"type\": \"annulation\",\n  \"probabilite\": 0.5\n}"}, "url": "{{baseUrl}}/predictions/1" } },
+        { "name": "Delete Prediction", "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/predictions/1" } }
+      ]
+    },
+    {
+      "name": "Recommendations",
+      "item": [
+        { "name": "List Recommendations", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/recommendations" } },
+        { "name": "Create Recommendation", "request": { "method": "POST", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"client_id\": 1,\n  \"voiture_id\": 1,\n  \"score\": 0.92,\n  \"date\": \"2026-04-03\"\n}"}, "url": "{{baseUrl}}/recommendations" } },
+        { "name": "Show Recommendation", "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/recommendations/1" } },
+        { "name": "Update Recommendation", "request": { "method": "PUT", "header": [{"key":"Content-Type","value":"application/json"}], "body": {"mode":"raw","raw":"{\n  \"client_id\": 1,\n  \"voiture_id\": 1,\n  \"score\": 0.95,\n  \"date\": \"2026-04-04\"\n}"}, "url": "{{baseUrl}}/recommendations/1" } },
+        { "name": "Delete Recommendation", "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/recommendations/1" } }
+      ]
+    }
+  ]
+}
