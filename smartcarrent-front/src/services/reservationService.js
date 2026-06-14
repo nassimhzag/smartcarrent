@@ -26,11 +26,26 @@ export async function updateReservation(reservationId, payload) {
 }
 
 /**
- * Action admin : marquer une reservation comme terminee.
- * La confirmation est desormais automatique apres paiement reussi.
+ * Action admin : cloturer une location (le client a rendu le vehicule).
+ *
+ * INVARIANT METIER cote backend : le paiement doit etre 'paye' pour pouvoir
+ * cloturer. Si ce n'est pas le cas, l'API repond 422 avec un message clair.
+ *
+ * Apres cloture : reservation.statut = 'terminee' et le vehicule redevient
+ * automatiquement disponible (effective_statut).
  */
-export async function completeReservation(reservationId) {
-  return updateReservation(reservationId, { statut: 'terminee' });
+export async function terminerReservation(reservationId) {
+  const { data } = await api.patch(`/reservations/${reservationId}/terminer`);
+  return data;
+}
+
+/**
+ * Action client : annuler sa propre reservation.
+ * Le backend refuse si un paiement a deja ete encaisse (paiement.statut === 'paye').
+ */
+export async function cancelReservation(reservationId) {
+  const { data } = await api.patch(`/reservations/${reservationId}/cancel`);
+  return data;
 }
 
 /**

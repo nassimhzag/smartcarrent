@@ -64,18 +64,6 @@ function IconWallet() {
   );
 }
 
-function IconCalendarRange() {
-  return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3.5" y="5" width="17" height="15" rx="2" />
-      <path d="M3.5 9h17" />
-      <path d="M8 3v4M16 3v4" />
-      <path d="M7 14h6" />
-      <path d="M11 17h6" />
-    </svg>
-  );
-}
-
 function IconTag() {
   return (
     <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
@@ -168,15 +156,6 @@ export default function AdminLayout({ children, title, subtitle }) {
           >
             <IconUsers />
             <span>Clients</span>
-          </NavLink>
-
-          <NavLink
-            to={ROUTES.ADMIN_CALENDRIERS}
-            end
-            className={({ isActive }) => 'admin-nav-link' + (isActive ? ' is-active' : '')}
-          >
-            <IconCalendarRange />
-            <span>Calendrier</span>
           </NavLink>
 
           <NavLink

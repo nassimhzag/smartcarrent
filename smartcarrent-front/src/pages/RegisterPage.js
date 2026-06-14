@@ -137,7 +137,19 @@ export default function RegisterPage() {
     setError('');
 
     try {
-      await register(form);
+      const response = await register(form);
+      // Verification email obligatoire : on amene l'utilisateur sur la page
+      // de saisie du code OTP, avec son email pre-transmis.
+      if (response?.verification_required) {
+        navigate(ROUTES.VERIFY_OTP, {
+          replace: true,
+          state: {
+            email: response.email || form.email,
+            expiresAt: response.expires_at || null,
+          },
+        });
+        return;
+      }
       navigate(ROUTES.HOME, { replace: true });
     } catch (requestError) {
       setError(getApiErrorMessage(requestError));

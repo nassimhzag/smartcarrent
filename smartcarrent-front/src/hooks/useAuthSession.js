@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getStoredToken, getStoredUser, setAuthToken, storeUser } from '../api/client';
 import { loginRequest, logoutRequest, meRequest, registerRequest } from '../services/authService';
+import { verifyOtpRequest } from '../services/otpService';
 
 function isAdmin(user) {
   return user?.role === 'admin';
@@ -65,6 +66,26 @@ export default function useAuthSession() {
     const nextToken = data?.token;
     const nextUser = data?.user;
 
+    // Si la verification email est requise, le backend ne renvoie pas de token :
+    // on ne stocke rien et la page Register redirige vers /verify-otp.
+    if (nextToken) {
+      setAuthToken(nextToken);
+      setToken(nextToken);
+      if (nextUser) {
+        setUser(nextUser);
+        storeUser(nextUser);
+      }
+    }
+
+    return data;
+  }
+
+  async function verifyOtp(payload) {
+    const data = await verifyOtpRequest(payload);
+
+    const nextToken = data?.token;
+    const nextUser = data?.user;
+
     if (nextToken) {
       setAuthToken(nextToken);
       setToken(nextToken);
@@ -98,6 +119,7 @@ export default function useAuthSession() {
       booting,
       login,
       register,
+      verifyOtp,
       logout,
       isAuthenticated: Boolean(token && user),
       isAdmin: isAdmin(user),

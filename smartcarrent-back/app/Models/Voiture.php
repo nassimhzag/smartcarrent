@@ -18,6 +18,7 @@ class Voiture extends Model
         'prix_par_jour',
         'statut',
         'image_path',
+        'categorie',
     ];
 
     protected $appends = [
@@ -36,11 +37,14 @@ class Voiture extends Model
 
     /**
      * Statut effectif calcule dynamiquement :
-     *  - 'maintenance' : si l'admin a force ce statut
-     *  - 'reservee'    : s'il existe une reservation active (en_attente_paiement ou
-     *                    confirmee) qui couvre la date du jour
-     *  - 'reservee'    : si une plage calendrier bloquante (disponible=false) couvre today
+     *  - 'maintenance' : si l'admin a explicitement positionne ce statut
+     *  - 'reservee'    : s'il existe une reservation active (statut = en_cours)
+     *                    qui couvre la date du jour
      *  - 'disponible'  : sinon
+     *
+     * La gestion manuelle du calendrier a ete supprimee : la disponibilite
+     * d'un vehicule est desormais derivee uniquement du statut admin
+     * (disponible/maintenance) et des reservations en cours.
      */
     public function getEffectiveStatutAttribute(): string
     {
@@ -50,41 +54,19 @@ class Voiture extends Model
 
         $today = Carbon::today()->toDateString();
 
-        // Reservations actives couvrant aujourd'hui
         $hasActiveReservation = $this->relationLoaded('reservations')
             ? $this->reservations
-                ->filter(fn ($r) => in_array($r->statut, ['en_attente_paiement', 'confirmee'], true))
+                ->filter(fn ($r) => $r->statut === 'en_cours')
                 ->filter(fn ($r) => (string) $r->date_debut <= $today && (string) $r->date_fin >= $today)
                 ->isNotEmpty()
             : Reservation::query()
                 ->where('voiture_id', $this->id)
-                ->whereIn('statut', ['en_attente_paiement', 'confirmee'])
+                ->where('statut', 'en_cours')
                 ->whereDate('date_debut', '<=', $today)
                 ->whereDate('date_fin', '>=', $today)
                 ->exists();
 
-        if ($hasActiveReservation) {
-            return 'reservee';
-        }
-
-        // Plage calendrier bloquante couvrant aujourd'hui
-        $hasCalendarBlock = $this->relationLoaded('calendriers')
-            ? $this->calendriers
-                ->filter(fn ($c) => ! $c->disponible)
-                ->filter(fn ($c) => (string) $c->date_debut <= $today && (string) $c->date_fin >= $today)
-                ->isNotEmpty()
-            : Calendrier::query()
-                ->where('voiture_id', $this->id)
-                ->where('disponible', false)
-                ->whereDate('date_debut', '<=', $today)
-                ->whereDate('date_fin', '>=', $today)
-                ->exists();
-
-        if ($hasCalendarBlock) {
-            return 'reservee';
-        }
-
-        return 'disponible';
+        return $hasActiveReservation ? 'reservee' : 'disponible';
     }
 
     public function marque()
@@ -95,11 +77,6 @@ class Voiture extends Model
     public function reservations()
     {
         return $this->hasMany(Reservation::class, 'voiture_id');
-    }
-
-    public function calendriers()
-    {
-        return $this->hasMany(Calendrier::class, 'voiture_id');
     }
 
     public function recommendations()

@@ -105,6 +105,22 @@ export default function LoginPage() {
 
       navigate(ROUTES.HOME, { replace: true });
     } catch (requestError) {
+      // Cas particulier : email non verifie. Le backend renvoie 403 avec
+      // verification_required et un nouveau code est deja en route — on
+      // bascule sur la page /verify-otp au lieu d'afficher une erreur.
+      const status = requestError?.response?.status;
+      const apiData = requestError?.response?.data;
+      if (status === 403 && apiData?.verification_required) {
+        navigate(ROUTES.VERIFY_OTP, {
+          replace: true,
+          state: {
+            email: apiData.email || form.email,
+            expiresAt: apiData.expires_at || null,
+          },
+        });
+        return;
+      }
+
       const apiMessage = getApiErrorMessage(
         requestError,
         'Echec de connexion. Verifiez vos identifiants.'
@@ -188,8 +204,8 @@ export default function LoginPage() {
             </label>
 
             <div className="auth-row auth-row-end">
-              <Link to="#" className="auth-link" aria-disabled="true">
-                Mot de passe oublie ?
+              <Link to={ROUTES.FORGOT_PASSWORD} className="auth-link">
+                Mot de passe oublié ?
               </Link>
             </div>
 

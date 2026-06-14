@@ -7,10 +7,9 @@ import useToast from '../hooks/useToast';
 import { getApiErrorMessage } from '../api/errorUtils';
 
 const STATUTS = [
-  { value: 'en_attente_paiement', label: 'En attente paiement' },
-  { value: 'confirmee', label: 'Confirmee' },
-  { value: 'annulee', label: 'Annulee' },
-  { value: 'terminee', label: 'Terminee' },
+  { value: 'en_cours', label: 'En cours' },
+  { value: 'terminee', label: 'Terminees' },
+  { value: 'annulee', label: 'Annulees' },
 ];
 
 function IconTrash() {
@@ -20,6 +19,14 @@ function IconTrash() {
       <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
       <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
       <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}
+
+function IconCheck() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 12l4 4 10-10" />
     </svg>
   );
 }
@@ -47,14 +54,18 @@ function diffInDays(start, end) {
 
 function statutLabel(statut) {
   const found = STATUTS.find((s) => s.value === statut);
-  return found ? found.label : statut;
+  if (found) return found.label;
+  if (statut === 'en_attente_paiement') return 'En attente paiement';
+  if (statut === 'confirmee') return 'Confirmee';
+  return statut || '—';
 }
 
 function statutBadgeClass(statut) {
+  if (statut === 'en_cours') return 'badge badge-ok';
+  if (statut === 'terminee') return 'badge badge-info';
+  if (statut === 'annulee') return 'badge badge-danger';
   if (statut === 'en_attente_paiement') return 'badge badge-warn';
   if (statut === 'confirmee') return 'badge badge-ok';
-  if (statut === 'annulee') return 'badge badge-danger';
-  if (statut === 'terminee') return 'badge badge-info';
   return 'badge';
 }
 
@@ -68,8 +79,21 @@ function computeTotal(reservation) {
   return days * daily;
 }
 
+function isFutureDate(dateStr) {
+  if (!dateStr) return false;
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(dateStr);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime() > today.getTime();
+  } catch (e) {
+    return false;
+  }
+}
+
 export default function AdminReservations() {
-  const { reservations, loading, error, remove } = useAdminReservations();
+  const { reservations, loading, error, remove, terminer } = useAdminReservations();
   const { toasts, success, error: toastError, dismiss } = useToast();
 
   const [search, setSearch] = useState('');
@@ -144,6 +168,27 @@ export default function AdminReservations() {
     }
   }
 
+  async function handleTerminer(reservation, event) {
+    if (event) event.stopPropagation();
+    if (!reservation) return;
+    setBusyId(reservation.id);
+    try {
+      await terminer(reservation.id);
+      success(
+        `Reservation #${reservation.id} cloturee. Le vehicule est de nouveau disponible.`
+      );
+    } catch (requestError) {
+      toastError(
+        getApiErrorMessage(
+          requestError,
+          'Impossible de cloturer la reservation.'
+        )
+      );
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <AdminLayout
       title="Gestion des reservations"
@@ -162,6 +207,7 @@ export default function AdminReservations() {
             className="admin-input"
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value)}
+            aria-label="Filtrer par statut"
           >
             <option value="all">Tous les statuts</option>
             {STATUTS.map((s) => (
@@ -217,6 +263,25 @@ export default function AdminReservations() {
                 {filteredReservations.map((r) => {
                   const total = computeTotal(r);
                   const isBusy = busyId === r.id;
+                  const dateFinReached = !isFutureDate(r.date_fin);
+                  // Conditions pour cloturer une location :
+                  //  - reservation en cours
+                  //  - date de fin atteinte
+                  //  - paiement encaisse (paye)
+                  const canTerminer =
+                    r.statut === 'en_cours' &&
+                    dateFinReached &&
+                    r.paiement?.statut === 'paye';
+                  let terminerTitle;
+                  if (canTerminer) {
+                    terminerTitle = 'Terminer la location (le client a rendu le vehicule)';
+                  } else if (!dateFinReached) {
+                    terminerTitle = 'Impossible : la date de fin de location n est pas encore atteinte (' + formatDate(r.date_fin) + ')';
+                  } else if (r.paiement?.statut !== 'paye') {
+                    terminerTitle = 'Impossible : aucun paiement encaisse pour cette reservation';
+                  } else {
+                    terminerTitle = 'Impossible de cloturer cette reservation';
+                  }
                   return (
                     <tr
                       key={r.id}
@@ -241,6 +306,22 @@ export default function AdminReservations() {
                       </td>
                       <td>
                         <div className="admin-row-actions">
+                          {r.statut === 'en_cours' && (
+                            <button
+                              type="button"
+                              className="admin-icon-btn admin-icon-success"
+                              onClick={(event) => handleTerminer(r, event)}
+                              disabled={isBusy || !canTerminer}
+                              aria-label="Terminer la location"
+                              title={terminerTitle}
+                            >
+                              {isBusy ? (
+                                <span className="admin-spinner" aria-hidden="true" />
+                              ) : (
+                                <IconCheck />
+                              )}
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="admin-icon-btn admin-icon-danger"
@@ -249,11 +330,7 @@ export default function AdminReservations() {
                             aria-label="Supprimer la reservation"
                             title="Supprimer"
                           >
-                            {isBusy ? (
-                              <span className="admin-spinner" aria-hidden="true" />
-                            ) : (
-                              <IconTrash />
-                            )}
+                            <IconTrash />
                           </button>
                         </div>
                       </td>
@@ -267,7 +344,17 @@ export default function AdminReservations() {
       </section>
 
       {selectedReservation && (
-        <ReservationDetailsModal reservation={selectedReservation} onClose={closeDetails} />
+        <ReservationDetailsModal
+          reservation={selectedReservation}
+          onClose={closeDetails}
+          onTerminer={
+            selectedReservation.statut === 'en_cours' &&
+            selectedReservation.paiement?.statut === 'paye' &&
+            !isFutureDate(selectedReservation.date_fin)
+              ? () => handleTerminer(selectedReservation)
+              : null
+          }
+        />
       )}
 
       {reservationToDelete && (

@@ -1,11 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getApiErrorMessage } from '../api/errorUtils';
-import {
-  confirmPaiement,
-  listPaiements,
-  refundPaiement,
-  rejectPaiement,
-} from '../services/paiementService';
+import { listPaiements, refundPaiement } from '../services/paiementService';
 
 function isToday(value) {
   if (!value) return false;
@@ -22,6 +17,15 @@ function isToday(value) {
   }
 }
 
+/**
+ * Hook admin pour la page Suivi des paiements.
+ *
+ * Logique metier actuelle : un paiement reussi confirme automatiquement la
+ * reservation. L'admin n'a donc plus besoin de valider/refuser manuellement
+ * un paiement. La seule action restante est le remboursement d'un paiement
+ * deja encaisse, qui annule la reservation associee (la voiture redevient
+ * disponible automatiquement via l'accessor effective_statut).
+ */
 export default function useAdminPaiements() {
   const [paiements, setPaiements] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -45,24 +49,6 @@ export default function useAdminPaiements() {
     loadPaiements();
   }, [loadPaiements]);
 
-  const reject = useCallback(
-    async (paiementId) => {
-      const updated = await rejectPaiement(paiementId);
-      await loadPaiements();
-      return updated;
-    },
-    [loadPaiements]
-  );
-
-  const confirmCash = useCallback(
-    async (paiementId) => {
-      const updated = await confirmPaiement(paiementId);
-      await loadPaiements();
-      return updated;
-    },
-    [loadPaiements]
-  );
-
   const refund = useCallback(
     async (paiementId) => {
       const updated = await refundPaiement(paiementId);
@@ -74,16 +60,20 @@ export default function useAdminPaiements() {
 
   const stats = useMemo(() => {
     const total = paiements.length;
-    const enAttente = paiements.filter((p) => p.statut === 'en_attente').length;
     const payes = paiements.filter((p) => p.statut === 'paye');
+    const rembourses = paiements.filter((p) => p.statut === 'rembourse');
     const aujourdhui = paiements.filter((p) => isToday(p.date_paiement)).length;
     const revenus = payes.reduce((sum, p) => sum + Number(p.montant || 0), 0);
+    const montantRembourse = rembourses.reduce(
+      (sum, p) => sum + Number(p.montant || 0),
+      0
+    );
 
     return {
       total,
-      enAttente,
       aujourdhui,
       revenus,
+      montantRembourse,
     };
   }, [paiements]);
 
@@ -93,8 +83,6 @@ export default function useAdminPaiements() {
     error,
     stats,
     reload: loadPaiements,
-    reject,
     refund,
-    confirmCash,
   };
 }

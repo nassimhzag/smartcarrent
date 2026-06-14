@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\AuthLoginRequest;
 use App\Http\Requests\Api\AuthRegisterRequest;
 use App\Models\Client;
+use App\Models\EmailOtp;
 use App\Models\User;
 use App\Notifications\AdminAlertNotification;
 use Illuminate\Http\JsonResponse;
@@ -46,19 +47,18 @@ class AuthController extends Controller
                 ));
             });
 
-        // حذف كل التوكنات القديمة قبل إنشاء واحد جديد
-        $user->tokens()->delete();
-
-        $deviceName = $request->userAgent() ?? 'unknown-device';
-        $token = $user->createToken($deviceName, [], now()->addDays(30))->plainTextToken;
+        // Verification email obligatoire : on emet un code OTP et on l'envoie
+        // par email. Aucun token Sanctum n'est cree a ce stade — l'utilisateur
+        // devra saisir le code sur la page /verify-otp pour finaliser l'inscription.
+        EmailVerificationController::issueForUser($user);
 
         return response()->json([
-            'message'     => 'Compte client créé avec succès.',
-            'user'        => $user->fresh()->loadMissing(['client', 'admin']),
-            'client'      => $client->load('utilisateur'),
-            'token_type'  => 'Bearer',
-            'token'       => $token,
-            'redirect_to' => $this->dashboardPathFor($user),
+            'message'              => 'Compte cree. Un code de verification vient d\'etre envoye a votre adresse email.',
+            'user'                 => $user->only(['name', 'email']),
+            'client'               => $client->only(['id']),
+            'email'                => $user->email,
+            'verification_required' => true,
+            'expires_in_minutes'   => EmailOtp::TTL_MINUTES,
         ], 201);
     }
 
@@ -72,6 +72,19 @@ class AuthController extends Controller
             throw ValidationException::withMessages([
                 'email' => __('Les identifiants sont incorrects.'),
             ]);
+        }
+
+        // Email non verifie : on bloque la connexion et on renvoie un nouvel
+        // OTP pour permettre a l'utilisateur de finaliser la verification.
+        if (! $user->email_verified_at) {
+            EmailVerificationController::issueForUser($user);
+
+            return response()->json([
+                'message'              => 'Votre adresse email n\'est pas encore verifiee. Un nouveau code vient de vous etre envoye.',
+                'verification_required' => true,
+                'email'                => $user->email,
+                'expires_in_minutes'   => EmailOtp::TTL_MINUTES,
+            ], 403);
         }
 
         // حذف كل التوكنات القديمة — كل login = توكن واحد فقط نشط

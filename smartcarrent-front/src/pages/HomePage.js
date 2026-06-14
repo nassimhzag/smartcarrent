@@ -1,9 +1,14 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import useVoitures from '../hooks/useVoitures';
 import Layout from '../layout/Layout';
-import { ROUTES, toCarDetail, toLoginWithNext, toReservationNew } from '../routes/paths';
+import {
+  ROUTES,
+  toCarDetail,
+  toLoginWithNext,
+  toReservationNew,
+} from '../routes/paths';
 
 const HERO_IMAGE =
   'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=1600&q=80';
@@ -98,7 +103,7 @@ const WHY_FEATURES = [
     icon: 'fast',
     tone: 'teal',
     title: 'Reservation rapide',
-    text: "Reservez votre voiture en quelques clics, sans paperasse inutile.",
+    text: 'Reservez votre voiture en quelques clics, sans paperasse inutile.',
   },
   {
     icon: 'secure',
@@ -144,6 +149,43 @@ const HOW_STEPS = [
   },
 ];
 
+/* ----- Categories de voitures (alignees avec le backend) ----- */
+const CAR_CATEGORIES = [
+  {
+    key: 'SUV',
+    tagline: 'Espace & robustesse',
+    image:
+      'https://images.unsplash.com/photo-1519641471654-76ce0107ad1b?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    key: 'Berline',
+    tagline: 'Confort & elegance',
+    image:
+      'https://images.unsplash.com/photo-1553440569-bcc63803a83d?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    key: 'Citadine',
+    tagline: 'Agile en ville',
+    image:
+      'https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    key: 'Luxe',
+    tagline: 'Le haut de gamme',
+    image:
+      'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&w=900&q=80',
+  },
+  {
+    key: 'Utilitaire',
+    tagline: 'Volume & transport',
+    image:
+      'https://images.unsplash.com/photo-1558981403-c5f9899a28bc?auto=format&fit=crop&w=900&q=80',
+  },
+];
+
+/* Remise appliquee aux "Offres du moment" (purement visuel cote front) */
+const PROMO_RATE = 0.15;
+
 function statutLabel(statut) {
   if (statut === 'disponible') return 'Disponible';
   if (statut === 'reservee') return 'Reservee';
@@ -159,43 +201,53 @@ function statutBadgeClass(statut) {
 }
 
 export default function HomePage() {
-  const [query, setQuery] = useState('');
-  const [marqueFilter, setMarqueFilter] = useState('all');
-  const [maxPrice, setMaxPrice] = useState('');
   const [dateDebut, setDateDebut] = useState('');
   const [dateFin, setDateFin] = useState('');
-  const [sortBy, setSortBy] = useState('recent');
 
   const { isAuthenticated, isAdmin } = useAuth();
   const navigate = useNavigate();
-  const catalogRef = useRef(null);
 
-  const initialVoitureParams = useMemo(() => ({ per_page: 24 }), []);
-  const { voitures, loading, error } = useVoitures(initialVoitureParams);
+  // Echantillon (24 voitures) : sert a la liste des marques, aux compteurs de
+  // categories et aux "Offres du moment". Ce n'est pas le catalogue complet
+  // (celui-ci vit sur /voitures).
+  const sampleParams = useMemo(() => ({ per_page: 24 }), []);
+  const { voitures } = useVoitures(sampleParams);
 
-  // Liste des marques derivee du catalogue (l'endpoint /marques est admin-only).
-  const marques = useMemo(() => {
-    const set = new Set();
-    voitures.forEach((v) => {
-      if (v.marque?.nom) set.add(v.marque.nom);
+  // Voitures populaires : top 4 par nombre de reservations (sort=popular cote API).
+  const popularParams = useMemo(() => ({ per_page: 4, sort: 'popular' }), []);
+  const { voitures: popularVoitures, loading: loadingPopular } = useVoitures(popularParams);
+
+  // Nombre de voitures par categorie (cartes "Categories populaires").
+  const categoryCounts = useMemo(() => {
+    const counts = {};
+    voitures.forEach((voiture) => {
+      if (voiture.categorie) {
+        counts[voiture.categorie] = (counts[voiture.categorie] || 0) + 1;
+      }
     });
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
+    return counts;
   }, [voitures]);
+
+  // "Offres du moment" : on met en avant quelques voitures disponibles.
+  const promoVoitures = useMemo(
+    () =>
+      voitures
+        .filter((voiture) => (voiture.effective_statut || voiture.statut) === 'disponible')
+        .slice(0, 3),
+    [voitures]
+  );
+
+  /* ---------- Actions / navigation ---------- */
 
   function handleReserve(voitureId) {
     if (isAdmin) {
       navigate(ROUTES.ADMIN_DASHBOARD);
       return;
     }
-
-    // Si l'utilisateur a deja saisi les dates dans la barre de recherche,
-    // on les transmet a la page reservation via query params (?debut=&fin=).
-    // Ces query params survivent meme au detour par la page de login.
     let resaPath = toReservationNew(voitureId);
     if (dateDebut && dateFin) {
       resaPath += `?debut=${encodeURIComponent(dateDebut)}&fin=${encodeURIComponent(dateFin)}`;
     }
-
     if (!isAuthenticated) {
       navigate(toLoginWithNext(resaPath));
       return;
@@ -203,82 +255,52 @@ export default function HomePage() {
     navigate(resaPath);
   }
 
-  function scrollToCatalog() {
-    catalogRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  function handleSeeAllVoitures() {
+    navigate(ROUTES.VOITURES);
   }
-
-  function handleHeroReserve() {
-    // Visiteur : on l'invite a se connecter. Connecte : on l'amene au catalogue.
-    if (!isAuthenticated && !isAdmin) {
-      navigate(ROUTES.LOGIN);
-      return;
-    }
-    scrollToCatalog();
-  }
-
-  const filteredVoitures = useMemo(() => {
-    const normalizedQuery = query.trim().toLowerCase();
-    const maxPriceNumber = maxPrice === '' ? null : Number(maxPrice);
-
-    const result = voitures.filter((voiture) => {
-      const matchesQuery =
-        normalizedQuery === '' ||
-        String(voiture.modele || '').toLowerCase().includes(normalizedQuery) ||
-        String(voiture.immatriculation || '').toLowerCase().includes(normalizedQuery) ||
-        String(voiture.marque?.nom || '').toLowerCase().includes(normalizedQuery);
-
-      const matchesMarque =
-        marqueFilter === 'all' || voiture.marque?.nom === marqueFilter;
-
-      const matchesPrice =
-        maxPriceNumber === null || Number(voiture.prix_par_jour || 0) <= maxPriceNumber;
-
-      return matchesQuery && matchesMarque && matchesPrice;
-    });
-
-    if (sortBy === 'price_asc') {
-      return [...result].sort((a, b) => Number(a.prix_par_jour) - Number(b.prix_par_jour));
-    }
-    if (sortBy === 'price_desc') {
-      return [...result].sort((a, b) => Number(b.prix_par_jour) - Number(a.prix_par_jour));
-    }
-    if (sortBy === 'model') {
-      return [...result].sort((a, b) => String(a.modele).localeCompare(String(b.modele)));
-    }
-    return result;
-  }, [voitures, query, marqueFilter, maxPrice, sortBy]);
 
   function handleSearch(event) {
     event.preventDefault();
-    scrollToCatalog();
+    const params = new URLSearchParams();
+    if (dateDebut) params.set('debut', dateDebut);
+    if (dateFin) params.set('fin', dateFin);
+    const qs = params.toString();
+    navigate(qs ? `${ROUTES.VOITURES}?${qs}` : ROUTES.VOITURES);
+  }
+
+  function handleCategoryClick(categorieKey) {
+    navigate(`${ROUTES.VOITURES}?categorie=${encodeURIComponent(categorieKey)}`);
   }
 
   return (
     <Layout>
       <div className="home-page">
+        {/* Calque de fond premium — fixe, subtil, ne gene pas la lecture */}
+        <div className="home-bg" aria-hidden="true" />
+
         {/* ============ HERO ============ */}
         <section
           className="home-hero"
           style={{
-            backgroundImage:
-              `linear-gradient(120deg, rgba(6,33,33,0.78) 0%, rgba(6,78,70,0.62) 60%, rgba(15,118,110,0.45) 100%), url('${HERO_IMAGE}')`,
+            backgroundImage: `linear-gradient(120deg, rgba(6,33,33,0.78) 0%, rgba(6,78,70,0.62) 60%, rgba(15,118,110,0.45) 100%), url('${HERO_IMAGE}')`,
           }}
         >
           <div className="home-hero-content">
             <p className="home-hero-kicker">Location de voitures — SmartCarRent</p>
             <h1 className="home-hero-title">
-              Louez la voiture <span>parfaite</span> pour chaque trajet.
+              Conecteer la voiture <span>parfaite</span> pour chaque trajet.
             </h1>
             <p className="home-hero-sub">
               Un catalogue de vehicules verifies, des prix transparents et une reservation
               confirmee en quelques clics. Consultez librement, reservez en toute simplicite.
             </p>
             <div className="home-hero-actions">
-              <button type="button" className="home-btn home-btn-primary" onClick={scrollToCatalog}>
+              <button
+                type="button"
+                className="home-btn home-btn-primary"
+                onClick={handleSeeAllVoitures}
+              >
                 Voir les voitures
-              </button>
-              <button type="button" className="home-btn home-btn-ghost" onClick={handleHeroReserve}>
-                Reserver maintenant
               </button>
             </div>
           </div>
@@ -303,68 +325,20 @@ export default function HomePage() {
                 onChange={(event) => setDateFin(event.target.value)}
               />
             </div>
-            <div className="home-search-field">
-              <label>Marque</label>
-              <select value={marqueFilter} onChange={(event) => setMarqueFilter(event.target.value)}>
-                <option value="all">Toutes les marques</option>
-                {marques.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="home-search-field">
-              <label>Prix max / jour</label>
-              <input
-                type="number"
-                min="0"
-                placeholder="Sans limite"
-                value={maxPrice}
-                onChange={(event) => setMaxPrice(event.target.value)}
-              />
-            </div>
             <button type="submit" className="home-btn home-btn-primary home-search-btn">
               Rechercher
             </button>
           </form>
         </section>
 
-        {/* ============ CATALOGUE ============ */}
-        <section className="home-catalog-section" ref={catalogRef}>
-          <header className="home-catalog-head">
-            <div>
-              <h2>Notre catalogue</h2>
-              <p className="muted-row">
-                {loading
-                  ? 'Chargement du catalogue...'
-                  : `${filteredVoitures.length} voiture(s) disponible(s)`}
-              </p>
-            </div>
-            <div className="home-catalog-controls">
-              <input
-                className="home-inline-input"
-                type="search"
-                placeholder="Rechercher un modele..."
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-              <select
-                className="home-inline-input"
-                value={sortBy}
-                onChange={(event) => setSortBy(event.target.value)}
-              >
-                <option value="recent">Plus recentes</option>
-                <option value="price_asc">Prix croissant</option>
-                <option value="price_desc">Prix decroissant</option>
-                <option value="model">Modele (A-Z)</option>
-              </select>
-            </div>
+        {/* ============ VOITURES POPULAIRES (4 cartes) ============ */}
+        <section className="home-popular">
+          <header className="home-section-head">
+            <p className="home-section-kicker">Selection du moment</p>
+            <h2>Voitures populaires</h2>
           </header>
 
-          {error && <p className="error-box">{error}</p>}
-
-          {loading ? (
+          {loadingPopular ? (
             <div className="home-catalog-grid">
               {[0, 1, 2, 3].map((i) => (
                 <div key={i} className="home-car-card home-car-skeleton" aria-hidden="true">
@@ -377,17 +351,16 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
-          ) : filteredVoitures.length === 0 ? (
+          ) : popularVoitures.length === 0 ? (
             <div className="home-empty">
               <div className="home-empty-icon" aria-hidden="true">🚗</div>
               <p>
-                <strong>Aucune voiture ne correspond a votre recherche.</strong>
+                <strong>Aucune voiture a mettre en avant pour le moment.</strong>
               </p>
-              <p className="muted-row">Essayez d'elargir vos criteres de recherche.</p>
             </div>
           ) : (
             <div className="home-catalog-grid">
-              {filteredVoitures.map((voiture) => {
+              {popularVoitures.slice(0, 4).map((voiture) => {
                 const statut = voiture.effective_statut || voiture.statut;
                 const isReservable = statut === 'disponible';
                 return (
@@ -400,7 +373,9 @@ export default function HomePage() {
                           <span>{voiture.marque?.nom || 'SmartCarRent'}</span>
                         </div>
                       )}
-                      <span className={statutBadgeClass(statut)}>{statutLabel(statut)}</span>
+                      <span className={statutBadgeClass(statut)}>
+                        {statutLabel(statut)}
+                      </span>
                     </div>
                     <div className="home-car-body">
                       <div className="home-car-titles">
@@ -441,6 +416,65 @@ export default function HomePage() {
               })}
             </div>
           )}
+
+          <div className="home-popular-cta">
+            <button
+              type="button"
+              className="home-btn home-btn-primary"
+              onClick={handleSeeAllVoitures}
+            >
+              Voir toutes les voitures
+            </button>
+          </div>
+        </section>
+
+        {/* ============ CATEGORIES POPULAIRES ============ */}
+        <section className="home-categories">
+          <header className="home-section-head">
+            <p className="home-section-kicker">Explorez par type</p>
+            <h2>Categories populaires</h2>
+          </header>
+          <div className="home-cat-grid">
+            {CAR_CATEGORIES.map((cat) => {
+              const count = Number(categoryCounts[cat.key]) || 0;
+              return (
+                <article key={cat.key} className="home-cat-card">
+                  <div
+                    className="home-cat-img"
+                    style={{ backgroundImage: `url('${cat.image}')` }}
+                  />
+                  <div className="home-cat-shade" />
+                  <div className="home-cat-body">
+                    <span className="home-cat-count">
+                      {count} voiture{count > 1 ? 's' : ''}
+                    </span>
+                    <h3>{cat.key}</h3>
+                    <p>{cat.tagline}</p>
+                    <button
+                      type="button"
+                      className="home-cat-btn"
+                      onClick={() => handleCategoryClick(cat.key)}
+                    >
+                      Explorer
+                      <svg
+                        viewBox="0 0 24 24"
+                        width="15"
+                        height="15"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M5 12h14M13 6l6 6-6 6" />
+                      </svg>
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
         </section>
 
         {/* ============ POURQUOI NOUS ============ */}
@@ -451,7 +485,10 @@ export default function HomePage() {
           </header>
           <div className="home-why-grid">
             {WHY_FEATURES.map((feature) => (
-              <article key={feature.title} className={`home-feature-card tone-${feature.tone}`}>
+              <article
+                key={feature.title}
+                className={`home-feature-card tone-${feature.tone}`}
+              >
                 <span className="home-feature-icon">
                   <FeatureIcon name={feature.icon} />
                 </span>
@@ -484,64 +521,56 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ============ FOOTER ============ */}
-        <footer className="home-footer">
-          <div className="home-footer-grid">
-            <div className="home-footer-brand">
-              <div className="home-footer-logo">
-                <span className="home-footer-logo-mark">SC</span>
-                <strong>SmartCarRent</strong>
-              </div>
-              <p>
-                Votre partenaire de confiance pour la location de voitures. Des vehicules
-                verifies, des prix clairs et un service rapide.
-              </p>
+        {/* ============ OFFRES DU MOMENT ============ */}
+        {promoVoitures.length > 0 && (
+          <section className="home-offers">
+            <header className="home-section-head">
+              <p className="home-section-kicker">Bons plans</p>
+              <h2>Offres du moment</h2>
+            </header>
+            <div className="home-offers-grid">
+              {promoVoitures.map((voiture) => {
+                const oldPrice = Number(voiture.prix_par_jour || 0);
+                const newPrice = oldPrice * (1 - PROMO_RATE);
+                return (
+                  <article key={voiture.id} className="home-offer-card">
+                    <div className="home-offer-img">
+                      {voiture.image_url ? (
+                        <img src={voiture.image_url} alt={voiture.modele} loading="lazy" />
+                      ) : (
+                        <div className="home-offer-img-fallback">
+                          <span>{voiture.marque?.nom || 'SmartCarRent'}</span>
+                        </div>
+                      )}
+                      <span className="home-offer-badge">-15%</span>
+                    </div>
+                    <div className="home-offer-body">
+                      <div className="home-offer-titles">
+                        <h3>{voiture.modele}</h3>
+                        <span>{voiture.marque?.nom || 'Marque non precisee'}</span>
+                      </div>
+                      <div className="home-offer-prices">
+                        <span className="home-offer-old">
+                          {oldPrice.toFixed(2)} DT
+                        </span>
+                        <span className="home-offer-new">
+                          {newPrice.toFixed(2)} DT<small>/ jour</small>
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        className="home-btn home-btn-primary-sm"
+                        onClick={() => handleReserve(voiture.id)}
+                      >
+                        Reserver l'offre
+                      </button>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
-
-            <div className="home-footer-col">
-              <h4>Contact</h4>
-              <ul>
-                <li>Avenue Habib Bourguiba, Tunis</li>
-                <li>+216 71 000 000</li>
-                <li>Lun — Sam : 8h - 19h</li>
-              </ul>
-            </div>
-
-            <div className="home-footer-col">
-              <h4>Email</h4>
-              <ul>
-                <li>contact@smartcarrent.tn</li>
-                <li>support@smartcarrent.tn</li>
-              </ul>
-            </div>
-
-            <div className="home-footer-col">
-              <h4>Suivez-nous</h4>
-              <div className="home-footer-social">
-                <a href="#facebook" aria-label="Facebook" onClick={(e) => e.preventDefault()}>
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                    <path d="M13 22v-9h3l.5-4H13V6.5c0-1.1.3-1.9 1.9-1.9H17V1.1C16.6 1 15.4 1 14.1 1 11.3 1 9.5 2.7 9.5 5.9V9H6.5v4h3v9H13z" />
-                  </svg>
-                </a>
-                <a href="#instagram" aria-label="Instagram" onClick={(e) => e.preventDefault()}>
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2">
-                    <rect x="3" y="3" width="18" height="18" rx="5" />
-                    <circle cx="12" cy="12" r="4" />
-                    <circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none" />
-                  </svg>
-                </a>
-                <a href="#twitter" aria-label="Twitter" onClick={(e) => e.preventDefault()}>
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
-                    <path d="M22 5.8c-.7.3-1.5.6-2.3.7.8-.5 1.5-1.3 1.8-2.3-.8.5-1.7.8-2.6 1a4 4 0 0 0-6.9 3.7A11.4 11.4 0 0 1 3.7 4.5a4 4 0 0 0 1.2 5.4c-.6 0-1.2-.2-1.8-.5v.1a4 4 0 0 0 3.2 4 4 4 0 0 1-1.8.1 4 4 0 0 0 3.7 2.8A8 8 0 0 1 2 18a11.3 11.3 0 0 0 6.1 1.8c7.4 0 11.4-6.1 11.4-11.4v-.5c.8-.6 1.5-1.3 2-2.1z" />
-                  </svg>
-                </a>
-              </div>
-            </div>
-          </div>
-          <div className="home-footer-bottom">
-            © {new Date().getFullYear()} SmartCarRent. Tous droits reserves.
-          </div>
-        </footer>
+          </section>
+        )}
       </div>
     </Layout>
   );

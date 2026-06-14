@@ -20,18 +20,22 @@ function diffInDays(start, end) {
 }
 
 function statutLabel(statut) {
-  if (statut === 'en_attente_paiement') return 'En attente paiement';
-  if (statut === 'confirmee') return 'Confirmee';
+  if (statut === 'en_cours') return 'En cours';
   if (statut === 'annulee') return 'Annulee';
   if (statut === 'terminee') return 'Terminee';
+  // Compat libelles historiques.
+  if (statut === 'en_attente_paiement') return 'En attente paiement';
+  if (statut === 'confirmee') return 'Confirmee';
   return statut || '—';
 }
 
 function statutBadgeClass(statut) {
-  if (statut === 'en_attente_paiement') return 'badge badge-warn';
-  if (statut === 'confirmee') return 'badge badge-ok';
+  if (statut === 'en_cours') return 'badge badge-ok';
   if (statut === 'annulee') return 'badge badge-danger';
   if (statut === 'terminee') return 'badge badge-info';
+  // Compat
+  if (statut === 'en_attente_paiement') return 'badge badge-warn';
+  if (statut === 'confirmee') return 'badge badge-ok';
   return 'badge';
 }
 
@@ -54,19 +58,27 @@ function computeReservationTotal(reservation) {
 function buildStats(reservations) {
   const stats = {
     total: reservations.length,
-    en_attente_paiement: 0,
-    confirmee: 0,
+    en_cours: 0,
+    en_attente_paiement: 0, // sous-categorie : en_cours avec paiement en_attente
+    confirmee: 0,           // sous-categorie : en_cours avec paiement paye
     annulee: 0,
     terminee: 0,
     totalDepense: 0,
   };
 
   reservations.forEach((r) => {
-    if (stats[r.statut] !== undefined) {
-      stats[r.statut] += 1;
+    if (r.statut === 'en_cours') {
+      stats.en_cours += 1;
+      if (r.paiement?.statut === 'en_attente') stats.en_attente_paiement += 1;
+      else if (r.paiement?.statut === 'paye') stats.confirmee += 1;
+    } else if (r.statut === 'annulee') {
+      stats.annulee += 1;
+    } else if (r.statut === 'terminee') {
+      stats.terminee += 1;
     }
-    // Ne compter que les reservations confirmees ou terminees pour le total depense
-    if (r.statut === 'confirmee' || r.statut === 'terminee') {
+
+    // Le total depense comptabilise tout paiement encaisse.
+    if (r.paiement?.statut === 'paye' || r.statut === 'terminee') {
       stats.totalDepense += computeReservationTotal(r);
     }
   });

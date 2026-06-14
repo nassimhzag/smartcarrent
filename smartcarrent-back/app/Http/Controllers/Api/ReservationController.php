@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\ReservationStoreRequest;
 use App\Http\Requests\Api\ReservationUpdateRequest;
-use App\Models\Calendrier;
 use App\Models\Reservation;
 use App\Models\User;
 use App\Notifications\ReservationNotification;
@@ -71,10 +70,12 @@ class ReservationController extends Controller
         if (! $isAdmin) {
             abort_if(! $user->client, 403, 'Profil client introuvable.');
             $data['client_id'] = $user->client->id;
-            $data['statut'] = 'en_attente_paiement';
+            $data['statut'] = 'en_cours';
         }
 
-        $status = $data['statut'] ?? 'en_attente_paiement';
+        // Une reservation est toujours creee en 'en_cours'. La dimension
+        // financiere (paye / en_attente / rembourse) est portee par le paiement.
+        $status = $data['statut'] ?? 'en_cours';
         $this->ensureNoDateConflict($data['voiture_id'], $data['date_debut'], $data['date_fin'], null, $status);
 
         $reservation = Reservation::create($data);
@@ -107,6 +108,26 @@ class ReservationController extends Controller
             ]);
         }
 
+        // Invariant 1 : pas de passage a 'terminee' sans paiement valide.
+        if ($nextStatus === 'terminee' && optional($reservation->paiement)->statut !== 'paye') {
+            throw ValidationException::withMessages([
+                'statut' => 'Impossible de cloturer la reservation : le paiement n est pas encore paye.',
+            ]);
+        }
+
+        // Invariant 3 : pas de passage a 'terminee' avant la date de fin de location.
+        if ($nextStatus === 'terminee') {
+            $today = \Carbon\Carbon::today();
+            $dateFin = $reservation->date_fin instanceof \Carbon\Carbon
+                ? $reservation->date_fin->copy()->startOfDay()
+                : \Carbon\Carbon::parse((string) $reservation->date_fin)->startOfDay();
+            if ($dateFin->greaterThan($today)) {
+                throw ValidationException::withMessages([
+                    'date_fin' => 'Impossible de cloturer : la date de fin de location n est pas encore atteinte.',
+                ]);
+            }
+        }
+
         $voitureId = $data['voiture_id'] ?? $reservation->voiture_id;
         $dateDebut = $data['date_debut'] ?? $reservation->date_debut;
         $dateFin = $data['date_fin'] ?? $reservation->date_fin;
@@ -135,19 +156,72 @@ class ReservationController extends Controller
             ]);
         }
 
-        if (! $isAdmin && $reservation->paiement()->exists()) {
+        // Le client ne peut annuler que si aucun paiement n'a ete encaisse.
+        // S'il a deja paye, il doit contacter l'agence (passage par admin/refund).
+        if (! $isAdmin && optional($reservation->paiement)->statut === 'paye') {
             throw ValidationException::withMessages([
-                'reservation' => 'Une reservation deja payee ne peut pas etre annulee par l utilisateur.',
+                'reservation' => 'Une reservation deja payee ne peut pas etre annulee directement. Veuillez contacter l agence pour un remboursement.',
             ]);
         }
 
         $reservation->update(['statut' => 'annulee']);
-        // Annulation cote API : seul l'admin peut transitionner vers 'annulee' (le client ne
-        // passe pas par cette route grace a canTransition). On notifie donc le client.
         $this->dispatchReservationNotification($reservation, 'cancelled', 'client');
 
         return response()->json([
             'message' => 'Reservation annulee avec succes.',
+            'reservation' => $reservation->load(['client.utilisateur', 'voiture', 'paiement']),
+        ]);
+    }
+
+    /**
+     * Action admin : cloturer une reservation (le client a rendu le vehicule).
+     *
+     * INVARIANTS METIER :
+     *  1. La reservation doit etre 'en_cours'.
+     *  2. Le paiement doit etre deja 'paye'.
+     *  3. La date de fin de location doit etre atteinte (date_fin <= today).
+     *     On ne peut pas cloturer une location dont la periode n'a pas
+     *     encore expire — le client n'a pas pu rendre le vehicule.
+     */
+    public function terminer(Reservation $reservation): JsonResponse
+    {
+        abort_if(! request()->user()->isAdmin(), 403, 'Action reservee a un administrateur.');
+
+        if ($reservation->statut !== 'en_cours') {
+            throw ValidationException::withMessages([
+                'reservation' => 'Seule une reservation en cours peut etre cloturee.',
+            ]);
+        }
+
+        $paiement = $reservation->paiement;
+        if (! $paiement || $paiement->statut !== 'paye') {
+            throw ValidationException::withMessages([
+                'paiement' => 'Impossible de cloturer : le paiement n est pas encore paye. Confirmez le paiement avant de cloturer la location.',
+            ]);
+        }
+
+        // Garde-fou date : on n'accepte la cloture qu'a partir de date_fin.
+        // Carbon::today() compare au debut du jour courant ; date_fin est cast
+        // en date par le modele Reservation.
+        $today = \Carbon\Carbon::today();
+        $dateFin = $reservation->date_fin instanceof \Carbon\Carbon
+            ? $reservation->date_fin->copy()->startOfDay()
+            : \Carbon\Carbon::parse((string) $reservation->date_fin)->startOfDay();
+
+        if ($dateFin->greaterThan($today)) {
+            throw ValidationException::withMessages([
+                'date_fin' => 'Impossible de cloturer : la date de fin de location n est pas encore atteinte ('
+                    . $dateFin->locale('fr')->isoFormat('DD MMMM YYYY')
+                    . '). La location est encore en cours.',
+            ]);
+        }
+
+        $reservation->update(['statut' => 'terminee']);
+        // Notification client : la location est officiellement terminee.
+        $this->dispatchReservationNotification($reservation, 'completed', 'client');
+
+        return response()->json([
+            'message' => 'Reservation cloturee avec succes. Le vehicule est de nouveau disponible.',
             'reservation' => $reservation->load(['client.utilisateur', 'voiture', 'paiement']),
         ]);
     }
@@ -158,7 +232,11 @@ class ReservationController extends Controller
         $this->assertCanAccessReservation($user, $reservation);
 
         if (! $user->isAdmin()) {
-            if (! in_array($reservation->statut, ['en_attente_paiement', 'annulee'], true) || $reservation->paiement()->exists()) {
+            // Cote client : suppression autorisee uniquement si la reservation est
+            // annulee et qu'aucun paiement n'a ete encaisse.
+            $paiementStatut = optional($reservation->paiement)->statut;
+            $hasEncashedPayment = in_array($paiementStatut, ['paye', 'rembourse'], true);
+            if ($reservation->statut !== 'annulee' || $hasEncashedPayment) {
                 throw ValidationException::withMessages([
                     'reservation' => 'Suppression non autorisee pour cette reservation.',
                 ]);
@@ -180,6 +258,13 @@ class ReservationController extends Controller
         abort_if((int) $reservation->client_id !== (int) $user->client->id, 403, 'Action non autorisee.');
     }
 
+    /**
+     * Table des transitions autorisees apres simplification de l'enum :
+     *   en_cours  -> terminee | annulee   (admin uniquement)
+     *   en_cours  -> annulee              (client si paiement = en_attente)
+     *   terminee  -> (final)
+     *   annulee   -> (final)
+     */
     private function canTransition(string $from, string $to, bool $isAdmin): bool
     {
         if ($from === $to) {
@@ -188,42 +273,30 @@ class ReservationController extends Controller
 
         if ($isAdmin) {
             $transitions = [
-                'en_attente_paiement' => ['confirmee', 'annulee'],
-                'confirmee' => ['terminee', 'annulee'],
-                'annulee' => [],
+                'en_cours' => ['terminee', 'annulee'],
+                'annulee'  => [],
                 'terminee' => [],
             ];
 
             return in_array($to, $transitions[$from] ?? [], true);
         }
 
-        // Le client ne peut plus annuler une reservation : toute transition de statut
-        // est interdite cote client. Seul l'admin peut agir via remboursement / suppression.
-        return false;
+        // Le client peut uniquement annuler une reservation 'en_cours'
+        // (la verif paiement=en_attente est faite dans cancel()).
+        return $from === 'en_cours' && $to === 'annulee';
     }
 
     private function ensureNoDateConflict(int $voitureId, string $dateDebut, string $dateFin, ?int $currentReservationId, string $nextStatus): void
     {
-        if (! in_array($nextStatus, ['en_attente_paiement', 'confirmee'], true)) {
+        // On ne verifie le conflit que si la reservation cible est 'en_cours'
+        // (les statuts terminee et annulee ne bloquent pas).
+        if ($nextStatus !== 'en_cours') {
             return;
-        }
-
-        $calendarConflict = Calendrier::query()
-            ->where('voiture_id', $voitureId)
-            ->where('disponible', false)
-            ->whereDate('date_debut', '<=', $dateFin)
-            ->whereDate('date_fin', '>=', $dateDebut)
-            ->exists();
-
-        if ($calendarConflict) {
-            throw ValidationException::withMessages([
-                'dates' => 'La voiture est indisponible sur cette periode (calendrier).',
-            ]);
         }
 
         $conflictQuery = Reservation::query()
             ->where('voiture_id', $voitureId)
-            ->whereIn('statut', ['en_attente_paiement', 'confirmee'])
+            ->where('statut', 'en_cours')
             ->whereDate('date_debut', '<=', $dateFin)
             ->whereDate('date_fin', '>=', $dateDebut);
 
@@ -254,12 +327,10 @@ class ReservationController extends Controller
         $ownerId = $reservation->client?->user_id;
         $owner = $ownerId ? User::find($ownerId) : null;
 
-        // Destinataire : le client (proprietaire de la reservation)
         if (($recipient === 'client' || $recipient === 'both') && $owner) {
             $owner->notify(new ReservationNotification($reservation, $event));
         }
 
-        // Destinataire : les admins (on saute l'admin qui est aussi proprietaire)
         if ($recipient === 'admin' || $recipient === 'both') {
             User::query()
                 ->where('role', 'admin')

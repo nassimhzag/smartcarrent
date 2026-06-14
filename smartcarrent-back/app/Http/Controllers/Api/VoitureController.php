@@ -22,7 +22,15 @@ class VoitureController extends Controller
         $sort = (string) $request->query('sort', 'created_at');
         $dir = strtolower((string) $request->query('dir', 'desc')) === 'asc' ? 'asc' : 'desc';
 
-        $query = Voiture::with(['marque', 'reservations', 'calendriers']);
+        // Recherche par disponibilite : si les deux dates sont fournies, on
+        // exclut les voitures ayant une reservation active (en_cours) ou un
+        // blocage calendrier qui chevauche la periode.
+        // Regle de chevauchement : existing.debut <= requested.fin
+        //                         AND existing.fin   >= requested.debut
+        $availableFrom = $request->query('available_from');
+        $availableTo = $request->query('available_to');
+
+        $query = Voiture::with(['marque', 'reservations']);
 
         if ($queryText !== '') {
             $query->where(function ($q) use ($queryText): void {
@@ -38,7 +46,25 @@ class VoitureController extends Controller
             $query->where('statut', $status);
         }
 
-        if ($sort === 'marque') {
+        if ($availableFrom && $availableTo) {
+            // Une voiture est disponible si :
+            //  - elle n'est pas en maintenance
+            //  - aucune reservation en cours ne chevauche la periode demandee
+            $query->where('statut', '!=', 'maintenance');
+
+            $query->whereDoesntHave('reservations', function ($q) use ($availableFrom, $availableTo): void {
+                $q->where('statut', 'en_cours')
+                    ->whereDate('date_debut', '<=', $availableTo)
+                    ->whereDate('date_fin', '>=', $availableFrom);
+            });
+        }
+
+        if ($sort === 'popular') {
+            // Tri par popularite : nombre de reservations decroissant, tie-breaker created_at.
+            $query->withCount('reservations')
+                ->orderBy('reservations_count', 'desc')
+                ->orderBy('created_at', 'desc');
+        } elseif ($sort === 'marque') {
             $query->leftJoin('marques', 'marques.id', '=', 'voitures.marque_id')
                 ->orderBy('marques.nom', $dir)
                 ->select('voitures.*');
@@ -55,6 +81,10 @@ class VoitureController extends Controller
     {
         $data = $request->validated();
 
+        // Statut force a 'disponible' a la creation, peu importe ce qui est envoye
+        // (le champ a ete retire du formulaire d'ajout cote admin).
+        $data['statut'] = 'disponible';
+
         if ($request->hasFile('image')) {
             $data['image_path'] = $request->file('image')->store('voitures', 'public');
         }
@@ -66,7 +96,7 @@ class VoitureController extends Controller
 
     public function show(Voiture $voiture): JsonResponse
     {
-        return response()->json($voiture->load(['marque', 'reservations', 'calendriers', 'recommendations']));
+        return response()->json($voiture->load(['marque', 'reservations', 'recommendations']));
     }
 
     public function update(VoitureUpdateRequest $request, Voiture $voiture): JsonResponse

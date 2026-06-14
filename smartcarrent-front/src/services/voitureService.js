@@ -31,6 +31,9 @@ function buildVoitureFormData(payload) {
   if (payload.statut !== undefined && payload.statut !== '') {
     formData.append('statut', payload.statut);
   }
+  if (payload.categorie !== undefined && payload.categorie !== '' && payload.categorie !== null) {
+    formData.append('categorie', payload.categorie);
+  }
   if (payload.image instanceof File) {
     formData.append('image', payload.image);
   }

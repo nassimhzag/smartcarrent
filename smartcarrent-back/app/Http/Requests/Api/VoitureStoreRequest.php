@@ -19,7 +19,9 @@ class VoitureStoreRequest extends FormRequest
             'modele' => ['required', 'string', 'max:255'],
             'annee' => ['required', 'integer', 'min:1900', 'max:' . ((int) date('Y') + 1)],
             'prix_par_jour' => ['required', 'numeric', 'min:0'],
-            'statut' => ['sometimes', 'string', 'in:disponible,reservee,maintenance'],
+            // Le statut n'est plus accepte a la creation : il est force a
+            // 'disponible' cote controller. L'admin peut le modifier ensuite via l'edition.
+            'categorie' => ['nullable', 'string', 'in:SUV,Berline,Citadine,Luxe,Utilitaire'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:4096'],
         ];
     }

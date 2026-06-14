@@ -21,7 +21,7 @@ class ReservationStoreRequest extends FormRequest
             'voiture_id' => ['required', 'integer', 'exists:voitures,id'],
             'date_debut' => ['required', 'date'],
             'date_fin' => ['required', 'date', 'after_or_equal:date_debut'],
-            'statut' => ['sometimes', 'string', 'in:en_attente_paiement,confirmee,annulee,terminee'],
+            'statut' => ['sometimes', 'string', 'in:en_cours,annulee,terminee'],
         ];
     }
 }

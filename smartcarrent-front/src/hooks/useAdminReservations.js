@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getApiErrorMessage } from '../api/errorUtils';
 import {
-  completeReservation,
   deleteReservation,
   listReservations,
+  terminerReservation,
 } from '../services/reservationService';
 
 export default function useAdminReservations() {
@@ -29,9 +29,13 @@ export default function useAdminReservations() {
     loadReservations();
   }, [loadReservations]);
 
-  const complete = useCallback(
+  /**
+   * Cloturer une location : le client a rendu le vehicule.
+   * Backend valide que paiement = paye avant d'autoriser.
+   */
+  const terminer = useCallback(
     async (reservationId) => {
-      const updated = await completeReservation(reservationId);
+      const updated = await terminerReservation(reservationId);
       await loadReservations();
       return updated;
     },
@@ -51,7 +55,7 @@ export default function useAdminReservations() {
     loading,
     error,
     reload: loadReservations,
-    complete,
+    terminer,
     remove,
   };
 }

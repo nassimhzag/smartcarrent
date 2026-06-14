@@ -1,8 +1,13 @@
 export const ROUTES = {
   HOME: '/',
+  VOITURES: '/voitures',
   CAR_DETAIL: '/voitures/:voitureId',
   LOGIN: '/login',
   REGISTER: '/register',
+  VERIFY_OTP: '/verify-otp',
+  FORGOT_PASSWORD: '/forgot-password',
+  RESET_PASSWORD: '/reset-password',
+  PROFILE: '/profile',
   RESERVATION_NEW: '/reservation/new/:voitureId',
   PAIEMENT_NEW: '/paiement/new/:reservationId',
   USER_DASHBOARD: '/dashboard',
@@ -11,7 +16,6 @@ export const ROUTES = {
   ADMIN_MARQUES: '/admin/marques',
   ADMIN_RESERVATIONS: '/admin/reservations',
   ADMIN_CLIENTS: '/admin/clients',
-  ADMIN_CALENDRIERS: '/admin/calendrier',
   ADMIN_PAIEMENTS: '/admin/paiements',
 };
 

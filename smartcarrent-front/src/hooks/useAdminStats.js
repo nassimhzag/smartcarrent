@@ -40,10 +40,15 @@ export default function useAdminStats() {
       const reservations = reservationsResponse?.data || [];
       const paiements = paiementsResponse?.data || [];
 
+      // Statuts simplifies : en_cours, terminee, annulee.
+      // En attente / Confirmees sont desormais derives du PAIEMENT, pas du statut resa.
+      const reservationsEnCours = reservations.filter((r) => r.statut === 'en_cours').length;
       const reservationsEnAttente = reservations.filter(
-        (r) => r.statut === 'en_attente_paiement'
+        (r) => r.statut === 'en_cours' && r.paiement?.statut === 'en_attente'
       ).length;
-      const reservationsConfirmees = reservations.filter((r) => r.statut === 'confirmee').length;
+      const reservationsConfirmees = reservations.filter(
+        (r) => r.statut === 'en_cours' && r.paiement?.statut === 'paye'
+      ).length;
       const reservationsTerminees = reservations.filter((r) => r.statut === 'terminee').length;
       const reservationsAnnulees = reservations.filter((r) => r.statut === 'annulee').length;
 

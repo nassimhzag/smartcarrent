@@ -62,9 +62,9 @@ export default function ReservationPage() {
   const [currentStep, setCurrentStep] = useState(1);
 
   const RESERVATION_STEPS = [
-    { label: 'Voiture choisie', description: 'Vehicule selectionne' },
-    { label: 'Dates & paiement', description: 'Reservation en cours' },
-    { label: 'Confirmation', description: 'Reservation finalisee' },
+    { label: 'Voiture choisie', description: 'Vehicule selectionne', icon: 'car' },
+    { label: 'Dates & paiement', description: 'Reservation en cours', icon: 'calendar' },
+    { label: 'Confirmation', description: 'Reservation finalisee', icon: 'sparkles' },
   ];
 
   useEffect(() => {

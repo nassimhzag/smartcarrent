@@ -36,13 +36,17 @@ class PaiementController extends Controller
     }
 
     /**
-     * Cree un paiement pour une reservation 'en_attente_paiement'.
+     * Cree un paiement pour une reservation 'en_cours' qui n'a pas encore de paiement.
      *
-     * Workflow selon la methode de paiement :
-     *  - especes : paiement cree en 'en_attente', la reservation reste 'en_attente_paiement'.
-     *    L'admin devra ensuite "Annuler" (rejectPayment) si le client ne paie pas sur place.
-     *  - carte, virement, mobile_money : paiement cree en 'paye', la reservation est
-     *    automatiquement confirmee et le client est notifie.
+     * NOUVELLE LOGIQUE METIER UNIFIEE :
+     * Quel que soit le mode de paiement choisi (carte, virement, mobile_money,
+     * especes), le paiement est immediatement marque 'paye' avec
+     * date_validation = now(). Il n'existe plus d'etape intermediaire ni de
+     * validation manuelle par l'admin. La reservation reste 'en_cours' jusqu'a
+     * sa cloture explicite par l'admin (via ReservationController::terminer).
+     *
+     * Un email de confirmation et une notification admin sont envoyes dans tous
+     * les cas.
      */
     public function store(PaiementStoreRequest $request): JsonResponse
     {
@@ -56,9 +60,9 @@ class PaiementController extends Controller
             abort_if((int) $reservation->client_id !== (int) $user->client->id, 403, 'Action non autorisee.');
         }
 
-        if ($reservation->statut !== 'en_attente_paiement') {
+        if ($reservation->statut !== 'en_cours') {
             throw ValidationException::withMessages([
-                'reservation_id' => 'Le paiement est autorise uniquement pour une reservation en attente de paiement.',
+                'reservation_id' => 'Le paiement est autorise uniquement pour une reservation en cours.',
             ]);
         }
 
@@ -68,79 +72,27 @@ class PaiementController extends Controller
             ]);
         }
 
-        $isCash = ($data['mode_paiement'] ?? null) === 'especes';
-
-        if ($isCash) {
-            // Paiement sur place : argent pas encore recu. On enregistre le paiement
-            // mais on laisse la reservation en attente de confirmation.
-            $data['statut'] = 'en_attente';
-            $data['date_validation'] = null;
-        } else {
-            // Paiement en ligne (carte, virement, mobile_money) : simule le succes.
-            $data['statut'] = 'paye';
-            $data['date_validation'] = now();
-        }
+        // Logique unifiee : tous les paiements sont marques 'paye' immediatement.
+        $data['statut'] = 'paye';
+        $data['date_validation'] = now();
 
         $paiement = Paiement::create($data);
 
-        if (! $isCash) {
-            // Confirmation automatique pour les paiements en ligne (carte).
-            $reservation->update(['statut' => 'confirmee']);
-            // Notifier le CLIENT : sa reservation est confirmee.
-            $this->notifyReservation($reservation, 'status_changed');
-            $this->sendConfirmationEmail($reservation, $paiement);
-
-            // Notifier les ADMINS : un paiement vient d'etre recu.
-            $clientName = $reservation->client?->utilisateur?->name ?? 'Client';
-            $voitureLabel = $reservation->voiture?->modele ?? 'voiture';
-            $montant = number_format((float) $paiement->montant, 2);
-            $this->notifyAdmins(
-                event: 'payment_received',
-                title: 'Paiement recu',
-                message: "Le client {$clientName} a paye {$montant} DT pour {$voitureLabel}.",
-                context: ['paiement_id' => $paiement->id, 'reservation_id' => $reservation->id]
-            );
-        }
-
-        return response()->json($paiement->load(['reservation.client.utilisateur', 'reservation.voiture']), 201);
-    }
-
-    /**
-     * Action admin : confirmer manuellement un paiement sur place.
-     * Le paiement passe de 'en_attente' a 'paye' et la reservation est confirmee.
-     * Un email de confirmation est envoye au client.
-     */
-    public function confirmCashPayment(Paiement $paiement): JsonResponse
-    {
-        abort_if(! request()->user()->isAdmin(), 403, 'Action reservee a un administrateur.');
-
-        if ($paiement->statut !== 'en_attente') {
-            throw ValidationException::withMessages([
-                'paiement' => 'Seul un paiement en attente peut etre confirme.',
-            ]);
-        }
-
-        if ($paiement->mode_paiement !== 'especes') {
-            throw ValidationException::withMessages([
-                'paiement' => 'La confirmation manuelle est reservee aux paiements sur place (especes).',
-            ]);
-        }
-
-        $paiement->update([
-            'statut' => 'paye',
-            'date_validation' => now(),
-        ]);
-
-        $reservation = $paiement->reservation;
-        if ($reservation && $reservation->statut !== 'confirmee') {
-            $reservation->update(['statut' => 'confirmee']);
-            // Action declenchee par l'admin : seul le client est notifie.
-            $this->notifyReservation($reservation, 'status_changed');
-        }
-
+        // Email "Paiement recu" au client.
         $this->sendConfirmationEmail($reservation, $paiement);
 
-        return response()->json($paiement->load(['reservation.client.utilisateur', 'reservation.voiture']));
+        // Notifier les ADMINS : un paiement vient d'etre encaisse.
+        $clientName = $reservation->client?->utilisateur?->name ?? 'Client';
+        $voitureLabel = $reservation->voiture?->modele ?? 'voiture';
+        $montant = number_format((float) $paiement->montant, 2);
+        $this->notifyAdmins(
+            event: 'payment_received',
+            title: 'Paiement recu',
+            message: "Le client {$clientName} a paye {$montant} DT pour {$voitureLabel}.",
+            context: ['paiement_id' => $paiement->id, 'reservation_id' => $reservation->id]
+        );
+
+        return response()->json($paiement->load(['reservation.client.utilisateur', 'reservation.voiture']), 201);
     }
 
     private function sendConfirmationEmail(?Reservation $reservation, ?Paiement $paiement): void
@@ -160,42 +112,13 @@ class PaiementController extends Controller
             Mail::to($email)->send(new ReservationConfirmedMail($reservation, $paiement));
         } catch (\Throwable $e) {
             // On ne fait pas echouer la transaction metier si l'email plante.
-            // Le mailer est en mode 'log' par defaut, donc tres robuste.
         }
-    }
-
-    /**
-     * Action admin : refuser un paiement.
-     * Le paiement passe a 'echoue' et la reservation liee est annulee.
-     */
-    public function rejectPayment(Paiement $paiement): JsonResponse
-    {
-        abort_if(! request()->user()->isAdmin(), 403, 'Action reservee a un administrateur.');
-
-        if (! in_array($paiement->statut, ['en_attente', 'paye'], true)) {
-            throw ValidationException::withMessages([
-                'paiement' => 'Seul un paiement en attente ou paye peut etre refuse.',
-            ]);
-        }
-
-        $paiement->update([
-            'statut' => 'echoue',
-        ]);
-
-        // Cascade : la reservation liee est annulee.
-        // Action declenchee par l'admin : seul le client est notifie.
-        $reservation = $paiement->reservation;
-        if ($reservation && $reservation->statut !== 'annulee') {
-            $reservation->update(['statut' => 'annulee']);
-            $this->notifyReservation($reservation, 'cancelled');
-        }
-
-        return response()->json($paiement->load(['reservation.client.utilisateur', 'reservation.voiture']));
     }
 
     /**
      * Action admin : rembourser un paiement.
      * Le paiement passe a 'rembourse' et la reservation liee est annulee.
+     * La voiture redevient automatiquement disponible.
      */
     public function refundPayment(Paiement $paiement): JsonResponse
     {
@@ -212,9 +135,7 @@ class PaiementController extends Controller
             'date_remboursement' => now(),
         ]);
 
-        // Cascade : la reservation liee est annulee (la voiture redevient
-        // automatiquement disponible dans le calendrier).
-        // Action declenchee par l'admin : seul le client est notifie.
+        // Cascade metier : la reservation liee est annulee.
         $reservation = $paiement->reservation;
         if ($reservation && $reservation->statut !== 'annulee') {
             $reservation->update(['statut' => 'annulee']);
@@ -238,9 +159,9 @@ class PaiementController extends Controller
 
         if (isset($data['reservation_id'])) {
             $reservation = Reservation::findOrFail($data['reservation_id']);
-            if (! in_array($reservation->statut, ['en_attente_paiement', 'confirmee'], true)) {
+            if ($reservation->statut !== 'en_cours') {
                 throw ValidationException::withMessages([
-                    'reservation_id' => 'Le paiement doit etre lie a une reservation active.',
+                    'reservation_id' => 'Le paiement doit etre lie a une reservation en cours.',
                 ]);
             }
         }
@@ -271,7 +192,7 @@ class PaiementController extends Controller
 
     /**
      * Notifie le proprietaire (client) d'une reservation. Utilise quand un admin
-     * (ou une action systeme) modifie le statut.
+     * declenche une action (remboursement) qui modifie le statut.
      */
     private function notifyReservation(Reservation $reservation, string $event): void
     {
@@ -285,8 +206,7 @@ class PaiementController extends Controller
     }
 
     /**
-     * Envoie une alerte aux administrateurs. Utilise quand le client effectue
-     * une action que l'admin doit voir (nouveau paiement en ligne, etc.).
+     * Envoie une alerte aux administrateurs.
      */
     private function notifyAdmins(string $event, string $title, string $message, array $context = []): void
     {

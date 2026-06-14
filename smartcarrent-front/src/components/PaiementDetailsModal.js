@@ -1,3 +1,9 @@
+import { useState } from 'react';
+import {
+  canDownloadFacture,
+  downloadFactureForReservation,
+} from '../services/factureService';
+
 function formatDate(value) {
   if (!value) return '—';
   try {
@@ -27,17 +33,13 @@ function formatDateTime(value) {
 }
 
 function statutLabel(statut) {
-  if (statut === 'en_attente') return 'En attente';
   if (statut === 'paye') return 'Paye';
-  if (statut === 'echoue') return 'Echoue';
   if (statut === 'rembourse') return 'Rembourse';
   return statut || '—';
 }
 
 function statutBadgeClass(statut) {
-  if (statut === 'en_attente') return 'badge badge-warn';
   if (statut === 'paye') return 'badge badge-ok';
-  if (statut === 'echoue') return 'badge badge-danger';
   if (statut === 'rembourse') return 'badge badge-muted';
   return 'badge';
 }
@@ -50,7 +52,59 @@ function modeLabel(mode) {
   return mode || '—';
 }
 
-export default function PaiementDetailsModal({ paiement, onClose }) {
+function paiementReference(paiement) {
+  return `PAY-${String(paiement.id).padStart(6, '0')}`;
+}
+
+function IconPdf() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+      <path d="M9 13h1.5a1.5 1.5 0 0 1 0 3H9z" />
+      <path d="M14 13v4" />
+      <path d="M14 15h2" />
+    </svg>
+  );
+}
+
+function IconReservation() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="16"
+      height="16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="4" width="18" height="18" rx="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+      <path d="M8 14h3" />
+      <path d="M8 18h6" />
+    </svg>
+  );
+}
+
+export default function PaiementDetailsModal({ paiement, onClose, onShowReservation }) {
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+
   if (!paiement) return null;
 
   const reservation = paiement.reservation || {};
@@ -58,12 +112,39 @@ export default function PaiementDetailsModal({ paiement, onClose }) {
   const utilisateur = client.utilisateur || {};
   const voiture = reservation.voiture || {};
 
+  // La facture est telechargeable des qu'un paiement est encaisse.
+  // On synthetise un objet reservation enrichi pour reutiliser canDownloadFacture
+  // (qui s'attend a voir reservation.paiement renseigne).
+  const reservationWithPaiement = {
+    ...reservation,
+    paiement: { statut: paiement.statut },
+  };
+  const factureAvailable = canDownloadFacture(reservationWithPaiement);
+  const canShowReservation = Boolean(reservation?.id) && typeof onShowReservation === 'function';
+
+  async function handleDownloadFacture() {
+    if (downloading || !reservation?.id) return;
+    setDownloadError('');
+    setDownloading(true);
+    try {
+      await downloadFactureForReservation(reservation.id);
+    } catch (error) {
+      setDownloadError(error?.message || 'Impossible de telecharger la facture.');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  function handleViewReservation() {
+    if (canShowReservation) onShowReservation(reservation);
+  }
+
   return (
     <div className="admin-modal-backdrop" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="admin-modal" onClick={(event) => event.stopPropagation()}>
         <header className="admin-modal-head">
           <div>
-            <h3>Detail paiement #{paiement.id}</h3>
+            <h3>Detail paiement {paiementReference(paiement)}</h3>
             <p className="muted-row" style={{ margin: '4px 0 0', fontSize: '0.85rem' }}>
               Cree le {formatDateTime(paiement.created_at)}
             </p>
@@ -124,7 +205,7 @@ export default function PaiementDetailsModal({ paiement, onClose }) {
             <div className="admin-detail-grid">
               <div>
                 <span>Reference</span>
-                <strong>RES-{reservation.id || '—'}</strong>
+                <strong>RES-{String(reservation.id || '').padStart(6, '0')}</strong>
               </div>
               <div>
                 <span>Statut reservation</span>
@@ -144,6 +225,10 @@ export default function PaiementDetailsModal({ paiement, onClose }) {
           <section className="admin-detail-section">
             <h4>Paiement</h4>
             <div className="admin-detail-grid">
+              <div>
+                <span>Reference</span>
+                <strong>{paiementReference(paiement)}</strong>
+              </div>
               <div>
                 <span>Methode</span>
                 <strong>{modeLabel(paiement.mode_paiement)}</strong>
@@ -172,9 +257,43 @@ export default function PaiementDetailsModal({ paiement, onClose }) {
               </div>
             </div>
           </section>
+
+          {downloadError && (
+            <p className="error-box" style={{ marginTop: 0 }}>
+              {downloadError}
+            </p>
+          )}
         </div>
 
-        <footer className="admin-form-footer" style={{ padding: '14px 22px' }}>
+        <footer
+          className="admin-form-footer"
+          style={{ padding: '14px 22px', flexWrap: 'wrap', gap: '10px' }}
+        >
+          {canShowReservation && (
+            <button
+              type="button"
+              className="admin-secondary-btn admin-icon-inline"
+              onClick={handleViewReservation}
+              title="Voir le detail de la reservation associee"
+            >
+              <IconReservation />
+              <span>Voir reservation</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className="facture-btn"
+            onClick={handleDownloadFacture}
+            disabled={!factureAvailable || downloading}
+            title={
+              factureAvailable
+                ? 'Telecharger la facture PDF'
+                : 'Facture disponible apres confirmation du paiement'
+            }
+          >
+            <IconPdf />
+            <span>{downloading ? 'Generation...' : 'Telecharger facture'}</span>
+          </button>
           <button type="button" className="admin-secondary-btn" onClick={onClose}>
             Fermer
           </button>

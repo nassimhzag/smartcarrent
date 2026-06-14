@@ -11,27 +11,14 @@ export async function getPaiementById(paiementId) {
 }
 
 /**
- * Cree un paiement reussi pour une reservation 'en_attente_paiement'.
- * Le backend confirme automatiquement la reservation associee.
+ * Cree un paiement pour une reservation 'en_cours' sans paiement actuel.
+ *
+ * Logique unifiee : quel que soit le mode (carte, virement, mobile_money,
+ * especes), le backend marque immediatement le paiement comme 'paye'. La
+ * reservation reste 'en_cours' jusqu'a sa cloture par l'admin.
  */
 export async function payReservation(payload) {
   const { data } = await api.post('/paiements', payload);
-  return data;
-}
-
-/**
- * Action admin : refuser un paiement (paiement -> echoue, reservation -> annulee).
- */
-export async function rejectPaiement(paiementId) {
-  const { data } = await api.patch(`/paiements/${paiementId}/reject`);
-  return data;
-}
-
-/**
- * Action admin : confirmer un paiement sur place (especes -> paye, reservation -> confirmee).
- */
-export async function confirmPaiement(paiementId) {
-  const { data } = await api.patch(`/paiements/${paiementId}/confirm`);
   return data;
 }
 

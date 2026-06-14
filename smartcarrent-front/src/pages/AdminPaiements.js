@@ -1,17 +1,16 @@
 import { useMemo, useState } from 'react';
 import AdminLayout from '../layout/AdminLayout';
 import PaiementDetailsModal from '../components/PaiementDetailsModal';
+import ReservationDetailsModal from '../components/ReservationDetailsModal';
 import { ToastStack } from '../components/Toast';
 import ConfirmDeleteModal from '../components/ConfirmDeleteModal';
-import { IconX, IconRefund, IconCheck } from '../components/AdminIcons';
+import { IconEye, IconRefund } from '../components/AdminIcons';
 import useAdminPaiements from '../hooks/useAdminPaiements';
 import useToast from '../hooks/useToast';
 import { getApiErrorMessage } from '../api/errorUtils';
 
 const STATUTS = [
-  { value: 'en_attente', label: 'En attente' },
   { value: 'paye', label: 'Paye' },
-  { value: 'echoue', label: 'Echoue' },
   { value: 'rembourse', label: 'Rembourse' },
 ];
 
@@ -41,9 +40,7 @@ function statutLabel(statut) {
 }
 
 function statutBadgeClass(statut) {
-  if (statut === 'en_attente') return 'badge badge-warn';
   if (statut === 'paye') return 'badge badge-ok';
-  if (statut === 'echoue') return 'badge badge-danger';
   if (statut === 'rembourse') return 'badge badge-muted';
   return 'badge';
 }
@@ -53,21 +50,24 @@ function modeLabel(mode) {
   return found ? found.label : mode;
 }
 
+function paiementReference(p) {
+  return `PAY-${String(p.id).padStart(6, '0')}`;
+}
+
 export default function AdminPaiements() {
-  const { paiements, loading, error, stats, reject, refund, confirmCash } = useAdminPaiements();
+  const { paiements, loading, error, stats, refund } = useAdminPaiements();
   const { toasts, success, error: toastError, dismiss } = useToast();
 
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
   const [modeFilter, setModeFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('recent');
 
   const [selectedPaiement, setSelectedPaiement] = useState(null);
+  const [selectedReservation, setSelectedReservation] = useState(null);
   const [busyId, setBusyId] = useState(null);
 
-  // Modal de confirmation (Annuler ou Rembourser selon le mode)
-  const [pendingAction, setPendingAction] = useState(null);
-  // pendingAction = { paiement, type: 'cancel' | 'refund' } | null
+  // Modal de confirmation pour le remboursement
+  const [pendingRefund, setPendingRefund] = useState(null);
 
   const filteredPaiements = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -77,18 +77,19 @@ export default function AdminPaiements() {
       const clientEmail = String(p.reservation?.client?.utilisateur?.email || '').toLowerCase();
       const voitureModele = String(p.reservation?.voiture?.modele || '').toLowerCase();
       const voitureImmat = String(p.reservation?.voiture?.immatriculation || '').toLowerCase();
+      const ref = paiementReference(p).toLowerCase();
 
       const matchesQuery =
         q === '' ||
+        ref.includes(q) ||
         clientName.includes(q) ||
         clientEmail.includes(q) ||
         voitureModele.includes(q) ||
         voitureImmat.includes(q);
 
-      const matchesStatus = statusFilter === 'all' || p.statut === statusFilter;
       const matchesMode = modeFilter === 'all' || p.mode_paiement === modeFilter;
 
-      return matchesQuery && matchesStatus && matchesMode;
+      return matchesQuery && matchesMode;
     });
 
     return filtered.sort((a, b) => {
@@ -96,78 +97,76 @@ export default function AdminPaiements() {
       const bDate = new Date(b.date_paiement || b.created_at).getTime();
       return sortOrder === 'oldest' ? aDate - bDate : bDate - aDate;
     });
-  }, [paiements, search, statusFilter, modeFilter, sortOrder]);
+  }, [paiements, search, modeFilter, sortOrder]);
 
-  function askCancel(paiement, event) {
+  function openDetails(paiement, event) {
     if (event) event.stopPropagation();
-    setPendingAction({ paiement, type: 'cancel' });
+    setSelectedPaiement(paiement);
   }
 
   function askRefund(paiement, event) {
     if (event) event.stopPropagation();
-    setPendingAction({ paiement, type: 'refund' });
+    setPendingRefund(paiement);
   }
 
-  function askConfirm(paiement, event) {
-    if (event) event.stopPropagation();
-    setPendingAction({ paiement, type: 'confirm' });
-  }
-
-  function closeConfirm() {
+  function closeRefundModal() {
     if (busyId) return;
-    setPendingAction(null);
+    setPendingRefund(null);
   }
 
-  async function confirmAction() {
-    if (!pendingAction) return;
-    const { paiement, type } = pendingAction;
+  async function confirmRefund() {
+    if (!pendingRefund) return;
+    const paiement = pendingRefund;
     setBusyId(paiement.id);
     try {
-      if (type === 'cancel') {
-        await reject(paiement.id);
-        success(`Paiement #${paiement.id} annule. Reservation annulee.`);
-      } else if (type === 'refund') {
-        await refund(paiement.id);
-        success(`Paiement #${paiement.id} rembourse. Reservation annulee.`);
-      } else if (type === 'confirm') {
-        await confirmCash(paiement.id);
-        success(`Paiement #${paiement.id} confirme. Le client a recu un email.`);
+      await refund(paiement.id);
+      success(
+        `Paiement ${paiementReference(paiement)} rembourse. La reservation a ete annulee et la voiture est de nouveau disponible.`
+      );
+      setPendingRefund(null);
+      // Si le modal details est ouvert sur le meme paiement, on le ferme
+      if (selectedPaiement?.id === paiement.id) {
+        setSelectedPaiement(null);
       }
-      setPendingAction(null);
     } catch (requestError) {
-      const fallback =
-        type === 'cancel'
-          ? "Impossible d'annuler le paiement."
-          : type === 'refund'
-          ? 'Impossible de rembourser le paiement.'
-          : 'Impossible de confirmer le paiement.';
-      toastError(getApiErrorMessage(requestError, fallback));
+      toastError(
+        getApiErrorMessage(requestError, 'Impossible de rembourser le paiement.')
+      );
     } finally {
       setBusyId(null);
     }
   }
 
+  // Demande "Voir reservation" depuis le modal paiement
+  function handleShowReservation(reservation) {
+    if (!reservation) return;
+    setSelectedPaiement(null);
+    setSelectedReservation(reservation);
+  }
+
   return (
     <AdminLayout
-      title="Gestion des paiements"
-      subtitle="Valider ou rembourser les paiements clients"
+      title="Suivi des paiements"
+      subtitle="Historique et consultation des transactions financieres"
     >
       <section className="admin-mini-stats">
+        <div className="admin-mini-stat tone-revenue">
+          <span>Revenus totaux</span>
+          <strong>{loading ? '…' : `${Number(stats.revenus).toFixed(2)} DT`}</strong>
+        </div>
         <div className="admin-mini-stat">
           <span>Total paiements</span>
           <strong>{loading ? '…' : stats.total}</strong>
-        </div>
-        <div className="admin-mini-stat tone-amber">
-          <span>En attente</span>
-          <strong>{loading ? '…' : stats.enAttente}</strong>
         </div>
         <div className="admin-mini-stat tone-info">
           <span>Aujourd'hui</span>
           <strong>{loading ? '…' : stats.aujourdhui}</strong>
         </div>
-        <div className="admin-mini-stat tone-revenue">
-          <span>Revenus valides</span>
-          <strong>{loading ? '…' : `${Number(stats.revenus).toFixed(2)} DT`}</strong>
+        <div className="admin-mini-stat tone-muted">
+          <span>Montant rembourse</span>
+          <strong>
+            {loading ? '…' : `${Number(stats.montantRembourse).toFixed(2)} DT`}
+          </strong>
         </div>
       </section>
 
@@ -176,22 +175,10 @@ export default function AdminPaiements() {
           <input
             className="admin-input"
             type="search"
-            placeholder="Rechercher par client, email, voiture, immat..."
+            placeholder="Rechercher par reference, client, email, voiture..."
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-          <select
-            className="admin-input"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-          >
-            <option value="all">Tous les statuts</option>
-            {STATUTS.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
           <select
             className="admin-input"
             value={modeFilter}
@@ -238,6 +225,7 @@ export default function AdminPaiements() {
             <table className="admin-table">
               <thead>
                 <tr>
+                  <th>Reference</th>
                   <th>Client</th>
                   <th>Vehicule</th>
                   <th>Montant</th>
@@ -250,14 +238,7 @@ export default function AdminPaiements() {
               <tbody>
                 {filteredPaiements.map((p) => {
                   const isBusy = busyId === p.id;
-                  const isCash = p.mode_paiement === 'especes';
-                  // Cash en attente : admin peut Confirmer (paye) OU Annuler (echoue)
-                  const canConfirmCash = isCash && p.statut === 'en_attente';
-                  // Cash deja paye : admin peut encore Annuler en cas d'erreur
-                  const canCancelCash =
-                    isCash && (p.statut === 'en_attente' || p.statut === 'paye');
-                  // Carte : on peut Rembourser une fois paye
-                  const canRefundOnline = !isCash && p.statut === 'paye';
+                  const canRefund = p.statut === 'paye';
                   return (
                     <tr
                       key={p.id}
@@ -265,6 +246,9 @@ export default function AdminPaiements() {
                       onClick={() => setSelectedPaiement(p)}
                       title="Cliquer pour voir les details"
                     >
+                      <td>
+                        <strong className="admin-mono">{paiementReference(p)}</strong>
+                      </td>
                       <td>
                         <strong>{p.reservation?.client?.utilisateur?.name || '—'}</strong>
                         <div className="muted-row">
@@ -280,35 +264,22 @@ export default function AdminPaiements() {
                       <td>{modeLabel(p.mode_paiement)}</td>
                       <td>{formatDate(p.date_paiement)}</td>
                       <td>
-                        <span className={statutBadgeClass(p.statut)}>{statutLabel(p.statut)}</span>
+                        <span className={statutBadgeClass(p.statut)}>
+                          {statutLabel(p.statut)}
+                        </span>
                       </td>
                       <td>
                         <div className="admin-row-actions">
-                          {canConfirmCash && (
-                            <button
-                              type="button"
-                              className="admin-icon-btn admin-icon-success"
-                              onClick={(event) => askConfirm(p, event)}
-                              disabled={isBusy}
-                              aria-label="Confirmer le paiement sur place"
-                              title="Confirmer le paiement (argent recu)"
-                            >
-                              <IconCheck />
-                            </button>
-                          )}
-                          {canCancelCash && (
-                            <button
-                              type="button"
-                              className="admin-icon-btn admin-icon-danger"
-                              onClick={(event) => askCancel(p, event)}
-                              disabled={isBusy}
-                              aria-label="Annuler le paiement"
-                              title="Annuler (paiement non recu)"
-                            >
-                              <IconX />
-                            </button>
-                          )}
-                          {canRefundOnline && (
+                          <button
+                            type="button"
+                            className="admin-icon-btn admin-icon-view"
+                            onClick={(event) => openDetails(p, event)}
+                            aria-label="Voir les details du paiement"
+                            title="Voir les details"
+                          >
+                            <IconEye />
+                          </button>
+                          {canRefund && (
                             <button
                               type="button"
                               className="admin-icon-btn admin-icon-warn"
@@ -335,37 +306,29 @@ export default function AdminPaiements() {
         <PaiementDetailsModal
           paiement={selectedPaiement}
           onClose={() => setSelectedPaiement(null)}
+          onShowReservation={handleShowReservation}
+        />
+      )}
+
+      {selectedReservation && (
+        <ReservationDetailsModal
+          reservation={selectedReservation}
+          onClose={() => setSelectedReservation(null)}
         />
       )}
 
       <ConfirmDeleteModal
-        isOpen={Boolean(pendingAction)}
-        title={
-          pendingAction?.type === 'cancel'
-            ? 'Annuler ce paiement (especes) ?'
-            : pendingAction?.type === 'confirm'
-            ? 'Confirmer ce paiement sur place ?'
-            : 'Rembourser ce paiement ?'
-        }
+        isOpen={Boolean(pendingRefund)}
+        title="Etes-vous sur de vouloir rembourser ce paiement ?"
         message={
-          pendingAction
-            ? pendingAction.type === 'cancel'
-              ? `Le paiement #${pendingAction.paiement.id} (${Number(pendingAction.paiement.montant).toFixed(2)} DT en especes) sera marque comme echoue. La reservation sera annulee et la voiture redeviendra disponible. Aucun argent ne sera rembourse car aucun argent n'a ete recu.`
-              : pendingAction.type === 'confirm'
-              ? `Confirmer la reception de ${Number(pendingAction.paiement.montant).toFixed(2)} DT pour le paiement #${pendingAction.paiement.id} ? Le paiement passera a "Paye", la reservation sera confirmee et un email de confirmation sera envoye au client.`
-              : `Le paiement #${pendingAction.paiement.id} (${Number(pendingAction.paiement.montant).toFixed(2)} DT) sera rembourse au client. La reservation sera annulee et la voiture redeviendra disponible.`
+          pendingRefund
+            ? `Le paiement ${paiementReference(pendingRefund)} (${Number(pendingRefund.montant).toFixed(2)} DT) sera rembourse au client. La reservation associee sera annulee et la voiture redeviendra disponible. Cette action est irreversible.`
             : null
         }
-        confirmLabel={
-          pendingAction?.type === 'cancel'
-            ? 'Annuler le paiement'
-            : pendingAction?.type === 'confirm'
-            ? 'Confirmer le paiement'
-            : 'Rembourser'
-        }
+        confirmLabel="Rembourser"
         cancelLabel="Retour"
-        onConfirm={confirmAction}
-        onCancel={closeConfirm}
+        onConfirm={confirmRefund}
+        onCancel={closeRefundModal}
         busy={Boolean(busyId)}
       />
 

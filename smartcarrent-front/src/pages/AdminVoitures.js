@@ -8,11 +8,25 @@ import { IconEdit, IconTrash } from '../components/AdminIcons';
 import { listMarques } from '../services/marqueService';
 import { getApiErrorMessage } from '../api/errorUtils';
 
+// Statuts manuels admin : seuls 'disponible' et 'maintenance' sont positionnables.
+// Le statut 'reservee' est calcule dynamiquement par l'accessor effective_statut
+// du modele Voiture (a partir des reservations en cours) et ne doit JAMAIS
+// etre choisi manuellement par l'admin.
 const STATUTS = [
   { value: 'disponible', label: 'Disponible' },
-  { value: 'reservee', label: 'Reservee' },
   { value: 'maintenance', label: 'Maintenance' },
 ];
+
+// Libelle a afficher pour le statut effectif (calcule). Inclut 'reservee'
+// uniquement pour l'affichage dans le tableau, jamais dans le formulaire.
+function statusEffectiveLabel(statut) {
+  if (statut === 'disponible') return 'Disponible';
+  if (statut === 'maintenance') return 'Maintenance';
+  if (statut === 'reservee') return 'Reservee';
+  return statut || '—';
+}
+
+const CATEGORIES = ['SUV', 'Berline', 'Citadine', 'Luxe', 'Utilitaire'];
 
 const EMPTY_FORM = {
   marque_id: '',
@@ -21,6 +35,7 @@ const EMPTY_FORM = {
   annee: new Date().getFullYear(),
   prix_par_jour: '',
   statut: 'disponible',
+  categorie: '',
   image: null,
   remove_image: false,
 };
@@ -32,9 +47,10 @@ function statusBadgeClass(statut) {
   return 'badge';
 }
 
+// Pour le tableau, on utilise le statut effectif (incluant 'reservee'),
+// pas seulement la liste des statuts manuels.
 function statusLabel(statut) {
-  const found = STATUTS.find((s) => s.value === statut);
-  return found ? found.label : statut;
+  return statusEffectiveLabel(statut);
 }
 
 function formatPrice(price) {
@@ -49,7 +65,6 @@ export default function AdminVoitures() {
 
   const [marques, setMarques] = useState([]);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -87,12 +102,9 @@ export default function AdminVoitures() {
         String(v.modele || '').toLowerCase().includes(q) ||
         String(v.immatriculation || '').toLowerCase().includes(q) ||
         String(v.marque?.nom || '').toLowerCase().includes(q);
-      // Filtre sur le statut effectif (dynamique) si dispo, sinon le statut brut
-      const currentStatut = v.effective_statut || v.statut;
-      const matchesStatus = statusFilter === 'all' || currentStatut === statusFilter;
-      return matchesQuery && matchesStatus;
+      return matchesQuery;
     });
-  }, [voitures, search, statusFilter]);
+  }, [voitures, search]);
 
   function openCreateModal() {
     setEditingId(null);
@@ -111,6 +123,7 @@ export default function AdminVoitures() {
       annee: voiture.annee || new Date().getFullYear(),
       prix_par_jour: voiture.prix_par_jour || '',
       statut: voiture.statut || 'disponible',
+      categorie: voiture.categorie || '',
       image: null,
       remove_image: false,
     });
@@ -203,18 +216,6 @@ export default function AdminVoitures() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-          <select
-            className="admin-input"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-          >
-            <option value="all">Tous les statuts</option>
-            {STATUTS.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
         </div>
         <button type="button" className="admin-primary-btn" onClick={openCreateModal}>
           + Ajouter une voiture
@@ -265,7 +266,12 @@ export default function AdminVoitures() {
                       </td>
                       <td>
                         <strong>{v.marque?.nom || 'Sans marque'}</strong>
-                        <div className="muted-row">{v.modele}</div>
+                        <div className="muted-row admin-modele-row">
+                          <span>{v.modele}</span>
+                          {v.categorie && (
+                            <span className="admin-cat-chip">{v.categorie}</span>
+                          )}
+                        </div>
                       </td>
                       <td>{v.immatriculation}</td>
                       <td>{v.annee}</td>
@@ -346,15 +352,34 @@ export default function AdminVoitures() {
                   </select>
                 </label>
 
+                {/* Champ Statut : visible uniquement en edition. A la creation, le
+                    statut est force a 'disponible' cote backend. */}
+                {editingId && (
+                  <label className="admin-form-field">
+                    <span>Statut</span>
+                    <select
+                      value={form.statut}
+                      onChange={(event) => updateField('statut', event.target.value)}
+                    >
+                      {STATUTS.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+
                 <label className="admin-form-field">
-                  <span>Statut</span>
+                  <span>Categorie</span>
                   <select
-                    value={form.statut}
-                    onChange={(event) => updateField('statut', event.target.value)}
+                    value={form.categorie}
+                    onChange={(event) => updateField('categorie', event.target.value)}
                   >
-                    {STATUTS.map((s) => (
-                      <option key={s.value} value={s.value}>
-                        {s.label}
+                    <option value="">— Aucune —</option>
+                    {CATEGORIES.map((c) => (
+                      <option key={c} value={c}>
+                        {c}
                       </option>
                     ))}
                   </select>

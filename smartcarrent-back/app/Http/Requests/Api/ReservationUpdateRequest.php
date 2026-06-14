@@ -21,7 +21,7 @@ class ReservationUpdateRequest extends FormRequest
                 'voiture_id' => ['sometimes', 'required', 'integer', 'exists:voitures,id'],
                 'date_debut' => ['sometimes', 'required', 'date'],
                 'date_fin' => ['sometimes', 'required', 'date', 'after_or_equal:date_debut'],
-                'statut' => ['sometimes', 'string', 'in:en_attente_paiement,confirmee,annulee,terminee'],
+                'statut' => ['sometimes', 'string', 'in:en_cours,annulee,terminee'],
             ];
         }
 

@@ -81,8 +81,9 @@ export default function PaiementPage() {
   const dailyPrice = Number(reservation?.voiture?.prix_par_jour || 0);
   const totalAmount = days * dailyPrice;
 
-  const isAlreadyPaid =
-    reservation && (reservation.paiement || reservation.statut === 'confirmee');
+  // Considere la reservation comme deja payee si un paiement existe (peu importe
+  // son statut). Le statut financier reel est porte par le paiement.
+  const isAlreadyPaid = reservation && Boolean(reservation.paiement);
 
   async function handleSubmit(event) {
     event.preventDefault();
@@ -99,11 +100,7 @@ export default function PaiementPage() {
         date_paiement: today,
         mode_paiement: mode,
       });
-      const successMessage =
-        mode === 'especes'
-          ? 'Reservation enregistree. Venez payer sur place pour la confirmer.'
-          : 'Paiement effectue. Reservation confirmee.';
-      success(successMessage);
+      success('Paiement effectue. Votre reservation est confirmee.');
       // Petit delai pour laisser apparaitre le toast
       setTimeout(() => navigate(ROUTES.USER_DASHBOARD, { replace: true }), 1200);
     } catch (requestError) {
@@ -216,8 +213,8 @@ export default function PaiementPage() {
 
                   <p className="paiement-info muted-row">
                     {mode === 'especes'
-                      ? "Paiement sur place : votre reservation sera enregistree mais restera en attente jusqu'a ce que vous regliez le montant a l'agence."
-                      : 'Interface de paiement simulee : aucune transaction reelle n\'est effectuee. Le paiement est valide automatiquement et la reservation devient confirmee.'}
+                      ? 'Paiement sur place : la reservation est validee immediatement. Pensez a regler le montant a l\'agence le jour du retrait du vehicule.'
+                      : 'Interface de paiement simulee : aucune transaction reelle n\'est effectuee. La reservation est validee automatiquement.'}
                   </p>
 
                   {formError && <p className="error-box">{formError}</p>}
@@ -229,9 +226,7 @@ export default function PaiementPage() {
                   >
                     {submitting
                       ? 'Traitement...'
-                      : mode === 'especes'
-                      ? 'Reserver et payer sur place'
-                      : `Payer ${totalAmount.toFixed(2)} DT`}
+                      : `Valider et payer ${totalAmount.toFixed(2)} DT`}
                   </button>
 
                   <button
